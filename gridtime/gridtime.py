@@ -1,4 +1,4 @@
-# time_units.py
+# gridtime.py
 from datetime import datetime, timedelta, date, time
 from calendar import monthrange
 from abc import ABC, abstractmethod
