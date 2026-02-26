@@ -174,3 +174,53 @@ def test_season_alternation():
     assert (w22.type, w22.year) == ("W", 2022)
     assert (s23.type, s23.year) == ("S", 2023)
     assert s23.prev() == w22
+
+def test_quarter_order_in_fall_back_day_walk():
+    """
+    W dniu cofnięcia czasu (2025-10-26, Europa/Warszawa) iterator walk("quarters15")
+    powinien zwrócić kwadranse między 02:00 a 03:00 w kolejności:
+      1) najpierw wszystkie '↑1st' (is_duplicated=True, is_backward=False)
+         dla minut: 0, 15, 30, 45
+      2) następnie wszystkie '↓2nd' (is_duplicated=True, is_backward=True)
+         dla minut: 0, 15, 30, 45
+
+    Dodatkowe asercje:
+      - przed sekwencją jest 01:45–02:00
+      - po sekwencji jest 03:00–03:15
+      - dokładnie 8 kwadransów w zakresie 02:00–03:00
+    """
+    day = gt.Day(date(2025, 10, 26))
+    quarters = list(day.walk("quarters15"))
+
+    idx_in_2h = [i for i, q in enumerate(quarters) if q.start_time.hour == 2]
+    assert len(idx_in_2h) == 8, f"Spodziewano 8 kwadransów 02:00–03:00, jest {len(idx_in_2h)}"
+
+    seq_2h = [quarters[i] for i in idx_in_2h]
+    expected_minutes = [0, 15, 30, 45]
+
+    first_half  = seq_2h[:4]
+    second_half = seq_2h[4:]
+
+    # 1) Pierwsza połowa: ↑1st
+    assert all(q.is_duplicated for q in first_half), "Pierwsza połowa musi być duplikowana (↑1st)"
+    assert all(not q.is_backward for q in first_half), "Pierwsza połowa musi być ↑1st (is_backward=False)"
+    assert [q.start_time.minute for q in first_half] == expected_minutes
+
+    # 2) Druga połowa: ↓2nd
+    assert all(q.is_duplicated for q in second_half), "Druga połowa musi być duplikowana (↓2nd)"
+    assert all(q.is_backward for q in second_half), "Druga połowa musi być ↓2nd (is_backward=True)"
+    assert [q.start_time.minute for q in second_half] == expected_minutes
+
+    # Kontekst: element przed i po
+    first_idx = idx_in_2h[0]
+    last_idx  = idx_in_2h[-1]
+
+    assert first_idx > 0
+    prev_q = quarters[first_idx - 1]
+    assert prev_q.start_time.hour == 1 and prev_q.start_time.minute == 45
+    assert prev_q.end_time.hour   == 2 and prev_q.end_time.minute   == 0
+
+    assert last_idx + 1 < len(quarters)
+    next_q = quarters[last_idx + 1]
+    assert next_q.start_time.hour == 3 and next_q.start_time.minute == 0
+    assert next_q.end_time.hour   == 3 and next_q.end_time.minute   == 15

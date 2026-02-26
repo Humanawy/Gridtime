@@ -2,10 +2,9 @@
 from datetime import datetime, timedelta, date, time
 from calendar import monthrange
 from abc import ABC, abstractmethod
-from typing import List, Iterator
+from typing import List, Iterator, Literal
 from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter
 from collections.abc import Sequence
-
 from datetime import timedelta
 
 def quarter_hour_step(obj: "QuarterHour", steps: int) -> "QuarterHour":
@@ -390,7 +389,16 @@ class Hour(GridtimeStructure):
         self._children = self._create_children()
         
     def _create_children(self) -> list[GridtimeLeaf]:
-        return create_quarter_hours(self.start_time) # type: ignore
+        # Jeśli godzina jest duplikowana, to:
+        #   - dla ↑1st zwróć tylko kwadranse ↑
+        #   - dla ↓2nd zwróć tylko kwadranse ↓
+        if self.is_duplicated:
+            phase = "second" if self.is_backward else "first"
+        else:
+            phase = "both"  # zwykłe godziny
+
+        return create_quarter_hours(self.start_time, phase=phase)  # type: ignore
+
     
     def strftime(self, format: str) -> str:
         return self.start_time.strftime(format)
@@ -569,7 +577,19 @@ def create_quarter_months(year: int, quarter: int) -> list[Month]:
     start_month = 1 + (quarter - 1) * 3
     return create_months(year, list(range(start_month, start_month + 3)))
 
-def create_quarter_hours(start_time: datetime) -> list[QuarterHour]:
+def create_quarter_hours(
+    start_time: datetime,
+    *,
+    phase: Literal["first", "second", "both"] = "both"
+) -> list[QuarterHour]:
+    """
+    Zwraca kwadranse w obrębie godziny zaczynającej się o `start_time`.
+    Parametr `phase` steruje kolejnością/zakresem dla godzin duplikowanych:
+      - "first"  → zwracaj tylko ↑1st
+      - "second" → zwracaj tylko ↓2nd
+      - "both"   → zwracaj ↑1st, potem ↓2nd dla każdego duplikowanego kwadransa
+                   (zachowanie wsteczne dla godzin nieduplikowanych)
+    """
     quarters: list[QuarterHour] = []
 
     for i in range(4):
@@ -579,8 +599,13 @@ def create_quarter_hours(start_time: datetime) -> list[QuarterHour]:
             continue
 
         if is_duplicated_quarter(dt):
-            quarters.append(QuarterHour(dt, is_backward=False))
-            quarters.append(QuarterHour(dt, is_backward=True))
+            if phase == "first":
+                quarters.append(QuarterHour(dt, is_backward=False))
+            elif phase == "second":
+                quarters.append(QuarterHour(dt, is_backward=True))
+            else:  # phase == "both"
+                quarters.append(QuarterHour(dt, is_backward=False))
+                quarters.append(QuarterHour(dt, is_backward=True))
         else:
             quarters.append(QuarterHour(dt))
 
