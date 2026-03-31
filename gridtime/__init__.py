@@ -44,5 +44,6 @@ __all__ = [
     "is_duplicated_hour",
     "is_duplicated_quarter",
     "is_missing_hour",
-    "is_missing_quarter"
+    "is_missing_quarter",
+    "validate_complete_range"
 ]
