@@ -15,7 +15,8 @@ from gridtime.gridtime import (
     create_quarter_hours,
     create_quarter_months,
     create_season_quarters,
-    create_week_days
+    create_week_days,
+    validate_complete_range
     )
 
 from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter
