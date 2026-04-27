@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date, time
 from calendar import monthrange
 from abc import ABC, abstractmethod
 from typing import List, Iterator, Literal, Union, Optional
-from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned
+from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned, parse_hour_repr, _is_hour_repr
 from collections.abc import Sequence
 from datetime import timedelta
 
@@ -368,8 +368,10 @@ class QuarterHour(GridtimeLeaf):
 
 @register_unit("hours", children_key="quarters15", step=hour_step)
 class Hour(GridtimeStructure):
-    def __init__(self, reference_time: datetime, *, is_backward: bool = False):
+    def __init__(self, reference_time: Union[str, datetime], *, is_backward: bool = False):
         super().__init__()
+        if isinstance(reference_time, str):
+            reference_time, is_backward = parse_hour_repr(reference_time)
         self.end_time = reference_time
         self.start_time = self.end_time - timedelta(hours=1)
 
@@ -412,9 +414,9 @@ class Hour(GridtimeStructure):
 
 @register_unit("days", children_key="hours", step=day_step)
 class Day(GridtimeStructure):
-    def __init__(self, day_date: date):
+    def __init__(self, day_date: Union[str, date]):
         super().__init__()
-        self.date = day_date
+        self.date = parse_date(day_date)
         self._children = self._create_children()
         self.hours = self._create_children()
 
@@ -564,25 +566,181 @@ def create_season_quarters(year: int, type_: str) -> list[Quarter]:
 def create_week_days(iso_year: int, iso_week: int) -> list[Day]:
     return [Day(date.fromisocalendar(iso_year, iso_week, i)) for i in range(1, 8)]
 
-def create_hours(date_: date, hour_range=range(1, 25)) -> list[Hour]:
-    hours: list[Hour] = []
+def create_hours(date_or_repr: Union[str, date], *more_reprs: str, hour_range=range(1, 25)) -> list[Hour]:
+    # Tryb repr: jeden lub więcej ciągów w formacie "YYYY-MM-DD HH:MM-HH:MM"
+    if more_reprs or (isinstance(date_or_repr, str) and _is_hour_repr(date_or_repr)):
+        return [Hour(r) for r in (date_or_repr, *more_reprs)]
 
+    # Tryb klasyczny: data dnia → wszystkie godziny (z obsługą DST)
+    date_ = parse_date(date_or_repr)
+    hours: list[Hour] = []
     for hour in hour_range:
         dt_end = datetime.combine(date_, time(0)) + timedelta(hours=hour)
         start_time = dt_end - timedelta(hours=1)
 
-        # brakująca (wiosenna) godzina – pomijamy
         if is_missing_hour(start_time):
             continue
 
-        # podwójna godzina przy cofnięciu czasu
         if is_duplicated_hour(start_time):
-            hours.append(Hour(dt_end, is_backward=False))  # 1. przed cofnięciem
-            hours.append(Hour(dt_end, is_backward=True))   # 2. po cofnięciu
+            hours.append(Hour(dt_end, is_backward=False))
+            hours.append(Hour(dt_end, is_backward=True))
         else:
             hours.append(Hour(dt_end))
 
     return hours
+
+def parse_hour(
+    hour: Union[int, str],
+    date_: Union[str, date],
+    *,
+    convention: Literal["0-23", "1-24"] = "0-23",
+    interpret: Literal["as_start", "as_end"] = "as_start",
+    backward: bool = False,
+) -> "Hour":
+    """Parsuje numer godziny i datę do obiektu Hour.
+
+    Args:
+        hour:       Numer godziny jako int lub str ("1", "01", "01:00").
+        date_:      Data dnia – obiekt date lub ciąg tekstowy obsługiwany przez parse_date.
+        convention: "0-23" (domyślna, programistyczna) lub "1-24" (energetyczna PSE).
+        interpret:  "as_start" (domyślna) – podana liczba to POCZĄTEK godziny,
+                    "as_end"              – podana liczba to KONIEC godziny.
+        backward:   Dla duplikowanych godzin DST: False = ↑1st, True = ↓2nd.
+
+    Tabela wynikowych zakresów:
+        convention  interpret   wejście   zakres
+        0-23        as_start    0         00:00–01:00
+        0-23        as_start    1         01:00–02:00
+        0-23        as_start    23        23:00–00:00+1d
+        0-23        as_end      1         00:00–01:00
+        0-23        as_end      23        22:00–23:00
+        0-23        as_end      0         ValueError
+        1-24        as_end      1         00:00–01:00
+        1-24        as_end      24        23:00–00:00+1d
+        1-24        as_start    1         01:00–02:00
+        1-24        as_start    24        ValueError
+    """
+    # --- parsowanie liczby godziny ---
+    if isinstance(hour, str):
+        hour = hour.strip()
+        if ":" in hour:
+            parts = hour.split(":")
+            if len(parts) != 2:
+                raise ValueError(f"Nieprawidłowy format godziny: '{hour}'.")
+            h_str, m_str = parts
+            if not m_str.isdigit() or int(m_str) != 0:
+                raise ValueError(
+                    f"parse_hour oczekuje pełnych godzin (minuty = 00). Otrzymano: '{hour}'."
+                )
+            hour = int(h_str)
+        else:
+            if not hour.isdigit():
+                raise ValueError(f"Nieprawidłowa wartość godziny: '{hour}'.")
+            hour = int(hour)
+
+    # --- walidacja zakresu dla danej konwencji ---
+    if convention == "0-23":
+        if not (0 <= hour <= 23):
+            raise ValueError(
+                f"Konwencja '0-23': godzina musi być w zakresie 0–23. Otrzymano: {hour}."
+            )
+    elif convention == "1-24":
+        if not (1 <= hour <= 24):
+            raise ValueError(
+                f"Konwencja '1-24': godzina musi być w zakresie 1–24. Otrzymano: {hour}."
+            )
+    else:
+        raise ValueError(f"Nieznana konwencja: '{convention}'. Dozwolone: '0-23', '1-24'.")
+
+    # --- wyznaczenie end_time (Hour przyjmuje reference_time jako end_time) ---
+    date_obj = parse_date(date_)
+    base = datetime.combine(date_obj, time(0, 0))
+
+    if convention == "0-23":
+        if interpret == "as_start":
+            end_time = base + timedelta(hours=hour + 1)
+        elif interpret == "as_end":
+            if hour == 0:
+                raise ValueError(
+                    "Konwencja '0-23', interpret='as_end': godzina 0 jest nieprawidłowa "
+                    "(żadna godzina nie kończy się o 00:00)."
+                )
+            end_time = base + timedelta(hours=hour)
+        else:
+            raise ValueError(f"Nieznany interpret: '{interpret}'. Dozwolone: 'as_start', 'as_end'.")
+    else:  # 1-24
+        if interpret == "as_end":
+            end_time = base + timedelta(hours=hour)
+        elif interpret == "as_start":
+            if hour == 24:
+                raise ValueError(
+                    "Konwencja '1-24', interpret='as_start': godzina 24 jako start jest nieprawidłowa."
+                )
+            end_time = base + timedelta(hours=hour + 1)
+        else:
+            raise ValueError(f"Nieznany interpret: '{interpret}'. Dozwolone: 'as_start', 'as_end'.")
+
+    return Hour(end_time, is_backward=backward)
+
+def create_hour_range(
+    start_hour: Union[int, str],
+    start_date: Union[str, date],
+    end_hour: Union[int, str],
+    end_date: Union[str, date],
+    *,
+    convention: Literal["0-23", "1-24"] = "0-23",
+    interpret: Literal["as_start", "as_end"] = "as_start",
+    include_start: bool = True,
+    include_end: bool = True,
+) -> list["Hour"]:
+    """Tworzy listę obiektów Hour w zadanym przedziale godzinowym.
+
+    Args:
+        start_hour:    Numer godziny początku (int lub str).
+        start_date:    Data początku (obiekt date lub ciąg tekstowy).
+        end_hour:      Numer godziny końca (int lub str).
+        end_date:      Data końca (obiekt date lub ciąg tekstowy).
+        convention:    "0-23" (domyślna) lub "1-24" (energetyczna PSE).
+        interpret:     "as_start" (domyślna) lub "as_end".
+        include_start: Czy włączyć pierwszą godzinę zakresu (domyślnie True).
+        include_end:   Czy włączyć ostatnią godzinę zakresu (domyślnie True).
+
+    DST: godziny brakujące (wiosna) są pomijane automatycznie; duplikowane (jesień)
+    są uwzględniane obydwie jako osobne obiekty Hour (↑1st i ↓2nd).
+    Granica końcowa domyślnie wskazuje na ↑1st duplikatu – aby włączyć też ↓2nd
+    należy użyć parse_hour z backward=True i przekazać wynik do granicy zakresu.
+    """
+    start = parse_hour(start_hour, start_date, convention=convention, interpret=interpret)
+    end   = parse_hour(end_hour,   end_date,   convention=convention, interpret=interpret)
+
+    # start musi być <= end (end_time jako oś czasu; ↑1st < ↓2nd dla tego samego przedziału)
+    if start.end_time > end.end_time or (
+        start.end_time == end.end_time
+        and start.is_backward
+        and not end.is_backward
+    ):
+        raise ValueError(
+            f"Godzina początku ({start!r}) musi być wcześniejsza "
+            f"lub równa godzinie końca ({end!r})."
+        )
+
+    result: list[Hour] = []
+    current = start
+
+    while True:
+        result.append(current)
+        # zatrzymujemy się gdy end_time i is_backward są identyczne
+        # (obsługa duplikatów DST: ↑1st != ↓2nd mimo identycznych start/end)
+        if current.end_time == end.end_time and current.is_backward == end.is_backward:
+            break
+        current = current.next()
+
+    if not include_start and result:
+        result = result[1:]
+    if not include_end and result:
+        result = result[:-1]
+
+    return result
 
 def create_quarter_months(year: int, quarter: int) -> list[Month]:
     start_month = 1 + (quarter - 1) * 3

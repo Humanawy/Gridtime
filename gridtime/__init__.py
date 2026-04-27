@@ -19,10 +19,12 @@ from gridtime.gridtime import (
     create_week_days,
     create_decade_days,
     create_date_range,
+    parse_hour,
+    create_hour_range,
     validate_complete_range
     )
 
-from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned
+from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned, parse_hour_repr
 
 __all__ = [
     "QuarterHour",
@@ -44,6 +46,8 @@ __all__ = [
     "create_week_days",
     "create_decade_days",
     "create_date_range",
+    "parse_hour",
+    "create_hour_range",
     "register_unit",
     "_GRIDTIME_REGISTRY",
     "_all_unit_keys",
@@ -54,5 +58,6 @@ __all__ = [
     "is_missing_quarter",
     "is_quarter_aligned",
     "parse_date",
+    "parse_hour_repr",
     "validate_complete_range"
 ]

@@ -7,7 +7,12 @@ if __name__ == "__main__":
     # for quarters in list(day.walk("quarters15"))[:25]:
     #     print(quarters)
 
-    hours = gt.create_date_range("2026-01-01", "2026-01-02", "hours")
-    for hour in hours:
-        print(hour)
+    day = gt.Day("2026-01-01") 
+    hour = gt.Hour("2026-01-01 21:00-22:00") 
+
+    hours = gt.create_hours("2026-01-01 21:00-22:00", "2026-01-01 22:00-23:00")
+
+    print(hour) # 2026-01-01 21:00-22:00
+    print(day) # 2026-01-01
+    print(hours) # [2026-01-01 21:00-22:00, 2026-01-01 22:00-23:00]
 
