@@ -1,18 +1,17 @@
-from gridtime import gridtime as gt 
 from datetime import date, datetime
+from gridtime import Day, Hour
 
-if __name__ == "__main__":
-    # day = gt.Day(date(2025, 10, 26))
+# Dzień zmiany czasu z letniego na zimowy – 26 października 2025
+dst_day = Day(date(2025, 10, 26))
 
-    # for quarters in list(day.walk("quarters15"))[:25]:
-    #     print(quarters)
+# Wypisz wszystkie godziny w tej dobie
+for hour in dst_day:
+    print(hour)
 
-    day = gt.Day("2026-01-01") 
-    hour = gt.Hour("2026-01-01 21:00-22:00") 
+# Weryfikacja zduplikowanych godzin
+print("Liczba godzin:", len(dst_day))  # ➜ 25
+duplicated_hours = [h for h in dst_day if h.is_duplicated]
 
-    hours = gt.create_hours("2026-01-01 21:00-22:00", "2026-01-01 22:00-23:00")
-
-    print(hour) # 2026-01-01 21:00-22:00
-    print(day) # 2026-01-01
-    print(hours) # [2026-01-01 21:00-22:00, 2026-01-01 22:00-23:00]
-
+# Sprawdź drzewo struktury
+print("\nStruktura drzewa:")
+dst_day.print_tree(unit_stop="hours")
