@@ -2,7 +2,7 @@
 from datetime import datetime, date
 from calendar import monthrange
 
-from typing import Optional
+from typing import Optional, Union
 import locale
 
 locale.setlocale(locale.LC_TIME, "pl_PL.UTF-8") 
@@ -58,6 +58,33 @@ def _is_reachable(cls: type, target_unit: str) -> bool:
 
 def list_registered_units():
     return {cls.__name__: props["unit_key"] for cls, props in _GRIDTIME_REGISTRY.items()}
+
+def parse_date(value: Union[str, date]) -> date:
+    """Parsuje ciąg tekstowy daty lub obiekt date do obiektu date.
+
+    Obsługiwane formaty tekstowe:
+        DD.MM.YYYY  →  01.01.2027
+        DD/MM/YYYY  →  01/01/2027
+        DD-MM-YYYY  →  01-01-2027
+        YYYY-MM-DD  →  2027-01-01
+    """
+    if isinstance(value, date):
+        return value
+    formats = [
+        "%d.%m.%Y",
+        "%d/%m/%Y",
+        "%d-%m-%Y",
+        "%Y-%m-%d",
+    ]
+    for fmt in formats:
+        try:
+            return datetime.strptime(value, fmt).date()
+        except ValueError:
+            continue
+    raise ValueError(
+        f"Nierozpoznany format daty: '{value}'. "
+        "Obsługiwane formaty: DD.MM.YYYY, DD/MM/YYYY, DD-MM-YYYY, YYYY-MM-DD"
+    )
 
 def is_missing_hour(start: datetime) -> bool:
     # 1. Czy miesiąc to marzec?

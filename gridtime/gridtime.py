@@ -2,8 +2,8 @@
 from datetime import datetime, timedelta, date, time
 from calendar import monthrange
 from abc import ABC, abstractmethod
-from typing import List, Iterator, Literal
-from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter
+from typing import List, Iterator, Literal, Union, Optional
+from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date
 from collections.abc import Sequence
 from datetime import timedelta
 
@@ -526,11 +526,22 @@ class MonthDecade(GridtimeStructure):
         return f"{self.year}-{self.month:02} D{self.index} ({self.start_date.day:02}-{self.end_date.day:02})"
 
 
-def create_days(year: int, month: int, day_range=None) -> list[Day]:
+def create_days(
+    year_or_date: Union[str, date, int],
+    month: Optional[int] = None,
+    day_range=None,
+) -> list["Day"]:
+    if isinstance(year_or_date, (str, date)):
+        d = parse_date(year_or_date)
+        year, month = d.year, d.month
+    else:
+        if month is None:
+            raise ValueError("Parametr 'month' jest wymagany gdy 'year_or_date' jest liczbą całkowitą.")
+        year = year_or_date
+
     num_days = monthrange(year, month)[1]
     if day_range is None:
         day_range = range(1, num_days + 1)
-
     return [Day(date(year, month, d)) for d in day_range]
 
 def create_months(year: int, months: list[int]) -> list[Month]:
