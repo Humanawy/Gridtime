@@ -59,8 +59,12 @@ def _is_reachable(cls: type, target_unit: str) -> bool:
 def list_registered_units():
     return {cls.__name__: props["unit_key"] for cls, props in _GRIDTIME_REGISTRY.items()}
 
+def is_quarter_aligned(dt: datetime) -> bool:
+    """Sprawdza, czy datetime jest wyrównany do granicy kwadransa (minuty: 0, 15, 30 lub 45)."""
+    return dt.minute in (0, 15, 30, 45) and dt.second == 0 and dt.microsecond == 0
+
 def parse_date(value: Union[str, date]) -> date:
-    """Parsuje ciąg tekstowy daty lub obiekt date do obiektu date.
+    """Parsuje ciąg tekstowy daty lub obiekt date/datetime do obiektu date.
 
     Obsługiwane formaty tekstowe:
         DD.MM.YYYY  →  01.01.2027
@@ -68,6 +72,8 @@ def parse_date(value: Union[str, date]) -> date:
         DD-MM-YYYY  →  01-01-2027
         YYYY-MM-DD  →  2027-01-01
     """
+    if isinstance(value, datetime):   # datetime jest podklasą date – sprawdź pierwszy
+        return value.date()
     if isinstance(value, date):
         return value
     formats = [

@@ -7,7 +7,7 @@ if __name__ == "__main__":
     # for quarters in list(day.walk("quarters15"))[:25]:
     #     print(quarters)
 
-    hours = gt.Year(2025).get("hours")
-    res = gt.validate_complete_range(hours)
-    print(res)
+    hours = gt.create_date_range("2026-01-01", "2026-01-02", "hours")
+    for hour in hours:
+        print(hour)
 

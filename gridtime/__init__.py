@@ -22,7 +22,7 @@ from gridtime.gridtime import (
     validate_complete_range
     )
 
-from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date
+from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned
 
 __all__ = [
     "QuarterHour",
@@ -52,6 +52,7 @@ __all__ = [
     "is_duplicated_quarter",
     "is_missing_hour",
     "is_missing_quarter",
+    "is_quarter_aligned",
     "parse_date",
     "validate_complete_range"
 ]

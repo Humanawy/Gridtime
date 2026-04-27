@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date, time
 from calendar import monthrange
 from abc import ABC, abstractmethod
 from typing import List, Iterator, Literal, Union, Optional
-from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date
+from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned
 from collections.abc import Sequence
 from datetime import timedelta
 
@@ -656,6 +656,15 @@ def create_date_range(
         include_start: Czy włączyć pierwszą jednostkę zakresu (domyślnie True).
         include_end:   Czy włączyć ostatnią jednostkę zakresu (domyślnie True).
     """
+    if granularity == "quarters15":
+        for label, val in (("start", start), ("end", end)):
+            if isinstance(val, datetime) and not is_quarter_aligned(val):
+                raise ValueError(
+                    f"Dla granulacji 'quarters15' data {label} musi być wyrównana do granicy "
+                    f"kwadransa (minuty: 0, 15, 30 lub 45, sekundy: 0). "
+                    f"Otrzymano: {val:%H:%M:%S}."
+                )
+
     start_date = parse_date(start)
     end_date   = parse_date(end)
 
