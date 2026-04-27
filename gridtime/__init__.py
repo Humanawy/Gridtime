@@ -4,6 +4,7 @@ from gridtime.gridtime import (
     Hour,
     Day,
     Month,
+    MonthDecade,
     Quarter,
     Year,
     Week,
@@ -16,6 +17,7 @@ from gridtime.gridtime import (
     create_quarter_months,
     create_season_quarters,
     create_week_days,
+    create_decade_days,
     validate_complete_range
     )
 
@@ -30,6 +32,7 @@ __all__ = [
     "Year",
     "Week",
     "Season",
+    "MonthDecade",
     "create_hours",
     "create_days",
     "create_months",
@@ -38,6 +41,7 @@ __all__ = [
     "create_quarter_months",
     "create_season_quarters",
     "create_week_days",
+    "create_decade_days",
     "register_unit",
     "_GRIDTIME_REGISTRY",
     "_all_unit_keys",
