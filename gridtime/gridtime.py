@@ -635,6 +635,66 @@ def create_decade_days(year: int, month: int, index: int) -> list["Day"]:
 
     return [Day(date(year, month, d)) for d in range(start_day, end_day + 1)]
 
+def create_date_range(
+    start: Union[str, date],
+    end: Union[str, date],
+    granularity: Literal["days", "hours", "quarters15"] = "days",
+    *,
+    include_start: bool = True,
+    include_end: bool = True,
+) -> Union[list["Day"], list["Hour"], list["QuarterHour"]]:
+    """Tworzy listę jednostek czasu w zadanym przedziale dat.
+
+    Args:
+        start:         Data początku – obiekt date lub ciąg tekstowy
+                       (DD.MM.YYYY / DD/MM/YYYY / DD-MM-YYYY / YYYY-MM-DD).
+        end:           Data końca – ten sam format co start.
+        granularity:   Granulacja zwracanych jednostek:
+                         "days"       – obiekty Day (jeden na dobę)
+                         "hours"      – obiekty Hour (z obsługą DST)
+                         "quarters15" – obiekty QuarterHour (z obsługą DST)
+        include_start: Czy włączyć pierwszą jednostkę zakresu (domyślnie True).
+        include_end:   Czy włączyć ostatnią jednostkę zakresu (domyślnie True).
+    """
+    start_date = parse_date(start)
+    end_date   = parse_date(end)
+
+    if start_date > end_date:
+        raise ValueError(
+            f"Data początku ({start_date}) musi być wcześniejsza lub równa dacie końca ({end_date})."
+        )
+
+    result: list = []
+    current = start_date
+
+    if granularity == "days":
+        while current <= end_date:
+            result.append(Day(current))
+            current += timedelta(days=1)
+
+    elif granularity == "hours":
+        while current <= end_date:
+            result.extend(create_hours(current))
+            current += timedelta(days=1)
+
+    elif granularity == "quarters15":
+        while current <= end_date:
+            for hour in create_hours(current):
+                result.extend(list(hour))
+            current += timedelta(days=1)
+
+    else:
+        raise ValueError(
+            f"Nieznana granulacja: '{granularity}'. Dozwolone: 'days', 'hours', 'quarters15'."
+        )
+
+    if not include_start and result:
+        result = result[1:]
+    if not include_end and result:
+        result = result[:-1]
+
+    return result
+
 def validate_complete_range(items: list[GridtimeLeaf]) -> bool:
     """
     Waliduje, czy lista `items` zawiera pełny zakres jednostek czasu.

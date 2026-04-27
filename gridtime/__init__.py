@@ -18,6 +18,7 @@ from gridtime.gridtime import (
     create_season_quarters,
     create_week_days,
     create_decade_days,
+    create_date_range,
     validate_complete_range
     )
 
@@ -42,6 +43,7 @@ __all__ = [
     "create_season_quarters",
     "create_week_days",
     "create_decade_days",
+    "create_date_range",
     "register_unit",
     "_GRIDTIME_REGISTRY",
     "_all_unit_keys",
