@@ -100,7 +100,7 @@ def _is_hour_repr(s: str) -> bool:
     """Sprawdza, czy ciąg tekstowy jest repr-em obiektu Hour (np. '2026-01-01 21:00-22:00')."""
     return bool(_HOUR_REPR_RE.match(s.strip()))
 
-def parse_hour_repr(s: str) -> tuple:
+def _parse_hour_repr(s: str) -> tuple:
     """Parsuje repr godziny do (end_time: datetime, is_backward: bool).
 
     Obsługiwane formaty:

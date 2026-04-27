@@ -3,7 +3,7 @@ from datetime import datetime, timedelta, date, time
 from calendar import monthrange
 from abc import ABC, abstractmethod
 from typing import List, Iterator, Literal, Union, Optional
-from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned, parse_hour_repr, _is_hour_repr
+from gridtime.utils import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable, is_duplicated_hour, is_duplicated_quarter, is_missing_hour, is_missing_quarter, parse_date, is_quarter_aligned, _parse_hour_repr, _is_hour_repr
 from collections.abc import Sequence
 from datetime import timedelta
 
@@ -371,7 +371,7 @@ class Hour(GridtimeStructure):
     def __init__(self, reference_time: Union[str, datetime], *, is_backward: bool = False):
         super().__init__()
         if isinstance(reference_time, str):
-            reference_time, is_backward = parse_hour_repr(reference_time)
+            reference_time, is_backward = _parse_hour_repr(reference_time)
         self.end_time = reference_time
         self.start_time = self.end_time - timedelta(hours=1)
 
@@ -591,35 +591,61 @@ def create_hours(date_or_repr: Union[str, date], *more_reprs: str, hour_range=ra
 
 def parse_hour(
     hour: Union[int, str],
-    date_: Union[str, date],
+    date_: Union[str, date, None] = None,
     *,
     convention: Literal["0-23", "1-24"] = "0-23",
     interpret: Literal["as_start", "as_end"] = "as_start",
     backward: bool = False,
 ) -> "Hour":
-    """Parsuje numer godziny i datę do obiektu Hour.
+    """Parsuje godzinę do obiektu Hour.
+
+    Dwa tryby użycia (analogicznie do parse_date):
+
+    1) Repr string (jeden argument):
+         parse_hour("2026-01-01 21:00-22:00")
+         parse_hour("2026-01-01 02:00-03:00 [↓2nd]")
+
+    2) Numer godziny + data:
+         parse_hour(21, "2026-01-01")
+         parse_hour("21", date(2026, 1, 1))
+         parse_hour(1, "2026-01-01", convention="1-24", interpret="as_end")
 
     Args:
-        hour:       Numer godziny jako int lub str ("1", "01", "01:00").
-        date_:      Data dnia – obiekt date lub ciąg tekstowy obsługiwany przez parse_date.
-        convention: "0-23" (domyślna, programistyczna) lub "1-24" (energetyczna PSE).
-        interpret:  "as_start" (domyślna) – podana liczba to POCZĄTEK godziny,
-                    "as_end"              – podana liczba to KONIEC godziny.
+        hour:       Repr string YYYY-MM-DD HH:MM-HH:MM lub numer godziny (int/str).
+        date_:      Data dnia – wymagana gdy hour jest numerem; None dla trybu repr.
+        convention: "0-23" (domyślna) lub "1-24" (energetyczna PSE).
+        interpret:  "as_start" (domyślna) lub "as_end".
         backward:   Dla duplikowanych godzin DST: False = ↑1st, True = ↓2nd.
+                    Ignorowany gdy hour jest repr stringiem z tagiem DST.
 
-    Tabela wynikowych zakresów:
+    Tabela zakresów (tryb numer + data):
         convention  interpret   wejście   zakres
-        0-23        as_start    0         00:00–01:00
-        0-23        as_start    1         01:00–02:00
-        0-23        as_start    23        23:00–00:00+1d
-        0-23        as_end      1         00:00–01:00
-        0-23        as_end      23        22:00–23:00
+        0-23        as_start    0         00:00-01:00
+        0-23        as_start    1         01:00-02:00
+        0-23        as_start    23        23:00-00:00+1d
+        0-23        as_end      1         00:00-01:00
+        0-23        as_end      23        22:00-23:00
         0-23        as_end      0         ValueError
-        1-24        as_end      1         00:00–01:00
-        1-24        as_end      24        23:00–00:00+1d
-        1-24        as_start    1         01:00–02:00
+        1-24        as_end      1         00:00-01:00
+        1-24        as_end      24        23:00-00:00+1d
+        1-24        as_start    1         01:00-02:00
         1-24        as_start    24        ValueError
     """
+    # --- tryb repr string ---
+    if isinstance(hour, str) and _is_hour_repr(hour):
+        if date_ is not None:
+            raise ValueError(
+                "Gdy hour jest repr stringiem (np. '2026-01-01 21:00-22:00'), "
+                "nie należy podawać argumentu date_."
+            )
+        return Hour(hour)
+
+    # --- tryb numer godziny + data ---
+    if date_ is None:
+        raise ValueError(
+            "Argument date_ jest wymagany gdy hour jest numerem godziny."
+        )
+
     # --- parsowanie liczby godziny ---
     if isinstance(hour, str):
         hour = hour.strip()
