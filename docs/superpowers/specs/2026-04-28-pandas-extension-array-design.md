@@ -142,7 +142,218 @@ from gridtime.pandas import to_gridtime, HourArray
 
 ---
 
-## 9. Testowanie
+## 9. Scenariusze zachowania
+
+Konkretne przykłady pokazujące oczekiwane wejście i wyjście w typowych sytuacjach.
+
+---
+
+### Scenariusz 1 — Wczytanie danych z CSV i konwersja na godziny
+
+Plik CSV zawiera kolumnę `timestamp` z początkami godzin jako stringi.  
+`timestamp_role="start"` (domyślne) oznacza że `"2025-01-15 12:00"` to początek godziny 12:00–13:00.
+
+```python
+df = pd.read_csv("produkcja.csv")
+# df["timestamp"]:
+# 0    2025-01-15 12:00
+# 1    2025-01-15 13:00
+# 2    2025-01-15 14:00
+# dtype: object
+
+df["hour"] = to_gridtime(df["timestamp"], "gridtime[hour]")
+# df["hour"]:
+# 0    2025-01-15 12:00-13:00
+# 1    2025-01-15 13:00-14:00
+# 2    2025-01-15 14:00-15:00
+# dtype: gridtime[hour]
+```
+
+---
+
+### Scenariusz 2 — Dane z bazy danych gdzie timestamp oznacza koniec godziny
+
+System SCADA zapisuje `timestamp` jako koniec okresu rozliczeniowego — `13:00` to godzina 12:00–13:00.  
+Wymaga jawnego `timestamp_role="end"`.
+
+```python
+df["hour"] = to_gridtime(df["timestamp"], "gridtime[hour]", timestamp_role="end")
+# Timestamp "2025-01-15 13:00" → Hour(end_time=13:00) → 2025-01-15 12:00-13:00
+#
+# df["hour"]:
+# 0    2025-01-15 12:00-13:00
+# 1    2025-01-15 13:00-14:00
+# dtype: gridtime[hour]
+```
+
+---
+
+### Scenariusz 3 — Konwersja istniejącej kolumny datetime pandas na DayArray
+
+Kolumna `datetime64[ns]` z pandas — typowy wynik `pd.read_excel` lub `pd.read_sql`.
+
+```python
+df["date"] = pd.to_datetime(["2025-03-01", "2025-03-02", "2025-03-03"])
+# dtype: datetime64[ns]
+
+df["day"] = to_gridtime(df["date"], "gridtime[day]")
+# df["day"]:
+# 0    2025-03-01
+# 1    2025-03-02
+# 2    2025-03-03
+# dtype: gridtime[day]
+
+df.dtypes
+# date    datetime64[ns]
+# day     gridtime[day]
+```
+
+---
+
+### Scenariusz 4 — Dane kwadransowe z pliku Excel
+
+Kolumna z początkami kwadransów. `QuarterHour(start_time)` — `timestamp_role="start"` domyślne i naturalne.
+
+```python
+df = pd.read_excel("pwr_15min.xlsx")
+# df["ts"]:
+# 0    2025-07-10 00:00
+# 1    2025-07-10 00:15
+# 2    2025-07-10 00:30
+# 3    2025-07-10 00:45
+
+df["qh"] = to_gridtime(df["ts"], "gridtime[quarter_hour]")
+# df["qh"]:
+# 0    2025-07-10 00:00-00:15
+# 1    2025-07-10 00:15-00:30
+# 2    2025-07-10 00:30-00:45
+# 3    2025-07-10 00:45-01:00
+# dtype: gridtime[quarter_hour]
+```
+
+---
+
+### Scenariusz 5 — Duplikowana godzina DST, brak `dst_ambiguous` → ostrzeżenie
+
+26 października 2025 godzina 02:00–03:00 wystąpi dwa razy (zmiana czasu z letniego na zimowy).  
+Dane wejściowe zawierają obie wartości `02:00` bez rozróżnienia.
+
+```python
+df["ts"] = pd.to_datetime([
+    "2025-10-26 01:00",
+    "2025-10-26 02:00",   # ← duplikowana!
+    "2025-10-26 03:00",
+])
+
+df["hour"] = to_gridtime(df["ts"], "gridtime[hour]")
+# GridtimeDSTWarning: 1 timestamp trafia na duplikowaną godzinę DST
+# (2025-10-26 02:00). Wybrano 'first'.
+# Podaj dst_ambiguous='first' lub 'second' aby wyciszyć to ostrzeżenie.
+#
+# df["hour"]:
+# 0    2025-10-26 01:00-02:00
+# 1    2025-10-26 02:00-03:00 [↑1st]
+# 2    2025-10-26 03:00-04:00
+# dtype: gridtime[hour]
+```
+
+---
+
+### Scenariusz 6 — Duplikowana godzina DST z jawnym `dst_ambiguous`
+
+Użytkownik wie że dane dotyczą drugiego (cofniętego) wystąpienia godziny — brak ostrzeżenia.
+
+```python
+df["hour"] = to_gridtime(
+    df["ts"], "gridtime[hour]",
+    dst_ambiguous="second"
+)
+# Brak ostrzeżeń.
+#
+# df["hour"]:
+# 0    2025-10-26 01:00-02:00
+# 1    2025-10-26 02:00-03:00 [↓2nd]
+# 2    2025-10-26 03:00-04:00
+# dtype: gridtime[hour]
+```
+
+---
+
+### Scenariusz 7 — Brakująca godzina DST (marzec) → `ValueError`
+
+30 marca 2025 godzina 02:00–03:00 nie istnieje (zmiana czasu z zimowego na letnie).  
+W gridtime nie można zbudować `Hour` dla nieistniejącej godziny — to zawsze błąd twardy.
+
+```python
+df["ts"] = pd.to_datetime([
+    "2025-03-30 01:00",
+    "2025-03-30 02:00",   # ← nie istnieje!
+    "2025-03-30 03:00",
+])
+
+df["hour"] = to_gridtime(df["ts"], "gridtime[hour]")
+# ValueError: Następujące timestamps nie istnieją z powodu zmiany czasu (DST):
+#   - 2025-03-30 02:00
+# Usuń lub popraw te wartości przed konwersją.
+```
+
+---
+
+### Scenariusz 8 — Próba wstawienia `None` do istniejącej kolumny → `ValueError`
+
+Kolumna gridtime jest non-nullable. Wstawianie `None` lub `NaN` jest niedozwolone.
+
+```python
+arr = HourArray._from_sequence([Hour("2025-01-15 12:00"), None])
+# ValueError: GridtimeArray nie obsługuje wartości None/NaN.
+# Kolumna gridtime[hour] jest non-nullable.
+```
+
+---
+
+### Scenariusz 9 — `astype` na istniejącej kolumnie datetime pandas
+
+Po zarejestrowaniu dtype można używać standardowego `astype` pandas.  
+Domyślna rola timestampa to `"start"` — działa jak `to_gridtime` bez dodatkowych parametrów.
+
+```python
+s = pd.Series(pd.to_datetime(["2025-06-01 08:00", "2025-06-01 09:00"]))
+s_hour = s.astype("gridtime[hour]")
+# 0    2025-06-01 08:00-09:00
+# 1    2025-06-01 09:00-10:00
+# dtype: gridtime[hour]
+```
+
+Uwaga: `astype` nie przekazuje `timestamp_role` ani `dst_ambiguous` — do konwersji z niestandardowymi parametrami należy używać `to_gridtime`.
+
+---
+
+### Scenariusz 10 — Łączenie dwóch DataFrame z kolumnami gridtime
+
+`pd.concat` zachowuje typ kolumny gdy obie mają ten sam dtype.
+
+```python
+df1["hour"]:
+# 0    2025-01-01 00:00-01:00
+# 1    2025-01-01 01:00-02:00
+# dtype: gridtime[hour]
+
+df2["hour"]:
+# 0    2025-01-02 00:00-01:00
+# dtype: gridtime[hour]
+
+pd.concat([df1, df2])["hour"]:
+# 0    2025-01-01 00:00-01:00
+# 1    2025-01-01 01:00-02:00
+# 0    2025-01-02 00:00-01:00
+# dtype: gridtime[hour]   ← dtype zachowany
+```
+
+Próba `pd.concat` kolumn różnych typów gridtime (np. `gridtime[hour]` z `gridtime[day]`) rzuci `TypeError`.
+
+---
+
+## 10. Testowanie
 
 Plik: `tests/test_pandas.py`
 
