@@ -58,3 +58,117 @@ def test_day_dtype_repr():
 
 def test_quarter_hour_dtype_repr():
     assert repr(QuarterHourDtype()) == "gridtime[quarter_hour]"
+
+
+from datetime import datetime, date
+from gridtime.pandas import HourArray, DayArray, QuarterHourArray
+
+
+# --- Helpers ----------------------------------------------------------------
+
+def make_hours():
+    return [
+        Hour(datetime(2025, 1, 15, 13, 0)),   # 12:00-13:00
+        Hour(datetime(2025, 1, 15, 14, 0)),   # 13:00-14:00
+    ]
+
+def make_days():
+    return [Day(date(2025, 1, 15)), Day(date(2025, 1, 16))]
+
+def make_qhs():
+    return [
+        QuarterHour(datetime(2025, 1, 15, 12, 0)),
+        QuarterHour(datetime(2025, 1, 15, 12, 15)),
+    ]
+
+
+# --- Tworzenie ---------------------------------------------------------------
+
+def test_hour_array_from_list():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    assert isinstance(arr, HourArray)
+    assert len(arr) == 2
+
+def test_day_array_from_list():
+    arr = DayArray._from_sequence(make_days(), dtype=DayDtype())
+    assert len(arr) == 2
+
+def test_quarter_hour_array_from_list():
+    arr = QuarterHourArray._from_sequence(make_qhs(), dtype=QuarterHourDtype())
+    assert len(arr) == 2
+
+
+# --- dtype ------------------------------------------------------------------
+
+def test_hour_array_dtype():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    assert isinstance(arr.dtype, HourDtype)
+    assert str(arr.dtype) == "gridtime[hour]"
+
+
+# --- isna zawsze False ------------------------------------------------------
+
+def test_isna_all_false():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    result = arr.isna()
+    assert list(result) == [False, False]
+
+
+# --- Non-nullable: odrzucenie None/NaN --------------------------------------
+
+def test_from_sequence_rejects_none():
+    with pytest.raises(ValueError, match="non-nullable"):
+        HourArray._from_sequence([make_hours()[0], None], dtype=HourDtype())
+
+def test_from_sequence_rejects_nan():
+    import numpy as np
+    with pytest.raises(ValueError, match="non-nullable"):
+        HourArray._from_sequence([make_hours()[0], np.nan], dtype=HourDtype())
+
+
+# --- Walidacja typu ---------------------------------------------------------
+
+def test_from_sequence_rejects_wrong_type():
+    with pytest.raises(TypeError):
+        HourArray._from_sequence([Day(date(2025, 1, 1))], dtype=HourDtype())
+
+
+# --- __getitem__ ------------------------------------------------------------
+
+def test_getitem_scalar():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    assert arr[0] == make_hours()[0]
+
+def test_getitem_slice():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    sliced = arr[0:1]
+    assert isinstance(sliced, HourArray)
+    assert len(sliced) == 1
+
+
+# --- pd.concat --------------------------------------------------------------
+
+def test_concat_same_type():
+    a1 = HourArray._from_sequence(make_hours()[:1], dtype=HourDtype())
+    a2 = HourArray._from_sequence(make_hours()[1:], dtype=HourDtype())
+    s1 = pd.Series(a1)
+    s2 = pd.Series(a2)
+    result = pd.concat([s1, s2])
+    assert str(result.dtype) == "gridtime[hour]"
+    assert len(result) == 2
+
+def test_concat_different_types_raises():
+    s_hour = pd.Series(HourArray._from_sequence(make_hours(), dtype=HourDtype()))
+    s_day = pd.Series(DayArray._from_sequence(make_days(), dtype=DayDtype()))
+    with pytest.raises(TypeError):
+        pd.concat([s_hour, s_day])
+
+
+# --- Series repr zawiera gridtime repr --------------------------------------
+
+def test_series_repr_contains_gridtime_repr():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    s = pd.Series(arr)
+    r = repr(s)
+    assert "2025-01-15 12:00-13:00" in r
+    assert "gridtime[hour]" in r
