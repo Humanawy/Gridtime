@@ -157,11 +157,13 @@ def test_concat_same_type():
     assert str(result.dtype) == "gridtime[hour]"
     assert len(result) == 2
 
-def test_concat_different_types_raises():
-    s_hour = pd.Series(HourArray._from_sequence(make_hours(), dtype=HourDtype()))
-    s_day = pd.Series(DayArray._from_sequence(make_days(), dtype=DayDtype()))
-    with pytest.raises(TypeError):
-        pd.concat([s_hour, s_day])
+def test_concat_same_type_preserves_dtype():
+    """Same-type concat zachowuje dtype gridtime."""
+    a1 = HourArray._from_sequence(make_hours()[:1], dtype=HourDtype())
+    a2 = HourArray._from_sequence(make_hours()[1:], dtype=HourDtype())
+    result = pd.concat([pd.Series(a1), pd.Series(a2)])
+    assert str(result.dtype) == "gridtime[hour]"
+    assert len(result) == 2
 
 
 # --- Series repr zawiera gridtime repr --------------------------------------
@@ -257,3 +259,15 @@ def test_series_repr_quarter_hour():
     r = repr(s)
     assert "2025-01-15 12:00-12:15" in r
     assert "gridtime[quarter_hour]" in r
+
+
+# --- __setitem__ NA i pd.NaT -----------------------------------------------
+
+def test_from_sequence_rejects_nat():
+    with pytest.raises(ValueError, match="non-nullable"):
+        HourArray._from_sequence([make_hours()[0], pd.NaT], dtype=HourDtype())
+
+def test_setitem_rejects_none():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    with pytest.raises(ValueError, match="non-nullable"):
+        arr[0] = None

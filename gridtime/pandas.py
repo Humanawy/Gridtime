@@ -4,7 +4,8 @@ from __future__ import annotations
 import warnings
 import numpy as np
 import pandas as pd
-from pandas.api.extensions import ExtensionDtype, register_extension_dtype
+from pandas.api.extensions import ExtensionDtype, ExtensionArray, register_extension_dtype
+from datetime import timedelta
 
 from gridtime.periods import Hour, Day, QuarterHour
 
@@ -65,10 +66,6 @@ class QuarterHourDtype(GridtimeDtype):
         return QuarterHourArray
 
 
-from pandas.api.extensions import ExtensionArray
-from datetime import timedelta
-
-
 class GridtimeArray(ExtensionArray):
     # --- Podklasy muszą nadpisać te atrybuty --------------------------------
     dtype: GridtimeDtype = None
@@ -85,6 +82,18 @@ class GridtimeArray(ExtensionArray):
         return result
 
     def __setitem__(self, key, value):
+        # Sprawdź NA przed typem — kolumna jest non-nullable
+        is_na = value is None
+        if not is_na:
+            try:
+                is_na = bool(pd.isna(value))
+            except (TypeError, ValueError):
+                is_na = False
+        if is_na:
+            raise ValueError(
+                f"Kolumna {self.dtype.name} jest non-nullable — "
+                f"nie można wstawiać wartości NA."
+            )
         if isinstance(value, self.__class__):
             self._data[key] = value._data
         elif isinstance(value, self._gridtime_type):
@@ -153,23 +162,6 @@ class GridtimeArray(ExtensionArray):
         raise NotImplementedError(
             f"_convert_timestamp nie jest zaimplementowane dla {cls.__name__}"
         )
-
-    def astype(self, dtype, copy: bool = True):
-        from pandas.api.types import pandas_dtype as _pandas_dtype
-        dtype = _pandas_dtype(dtype)
-        if dtype == self.dtype:
-            return self.copy() if copy else self
-        if isinstance(dtype, GridtimeDtype):
-            raise TypeError(
-                f"Nie można konwertować {self.dtype.name} na {dtype.name}. "
-                f"Typy gridtime nie są kompatybilne."
-            )
-        if dtype == np.dtype("object"):
-            raise TypeError(
-                f"Nie można konwertować {self.dtype.name} na dtype object. "
-                f"Użyj pd.concat tylko z seriami tego samego typu gridtime."
-            )
-        return super().astype(dtype, copy=copy)
 
     @property
     def nbytes(self) -> int:
