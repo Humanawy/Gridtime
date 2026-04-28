@@ -4,6 +4,7 @@ from typing import Optional
 _GRIDTIME_REGISTRY = {}
 
 def print_structure_tree(cls: type, indent: str = ""):
+    """Rekurencyjnie drukuje drzewo struktury jednostek czasu zaczynając od `cls`."""
     unit_key = _GRIDTIME_REGISTRY.get(cls, {}).get("unit_key", cls.__name__)
     print(f"{indent}{cls.__name__} [{unit_key}]")
 
@@ -17,6 +18,7 @@ def print_structure_tree(cls: type, indent: str = ""):
             print_structure_tree(child_cls, indent + "  ")
 
 def register_unit(unit_key: str, children_key: Optional[str] = None, step: Optional[str] = None):
+    """Dekorator rejestrujący klasę jednostki czasu w `_GRIDTIME_REGISTRY`."""
     def decorator(cls):
         _GRIDTIME_REGISTRY[cls] = {
             "unit_key": unit_key,
@@ -27,7 +29,7 @@ def register_unit(unit_key: str, children_key: Optional[str] = None, step: Optio
     return decorator
 
 def _all_unit_keys() -> set[str]:
-    """Zwraca zbiór wszystkich zarejestrowanych unit_key‑ów."""
+    """Zwraca zbiór wszystkich zarejestrowanych unit_key-ów."""
     return {props["unit_key"] for props in _GRIDTIME_REGISTRY.values()}
 
 def _is_reachable(cls: type, target_unit: str) -> bool:
@@ -50,5 +52,6 @@ def _is_reachable(cls: type, target_unit: str) -> bool:
     ]
     return any(_is_reachable(c, target_unit) for c in child_classes)
 
-def list_registered_units():
+def list_registered_units() -> dict[str, str]:
+    """Zwraca słownik {nazwa_klasy: unit_key} dla wszystkich zarejestrowanych jednostek."""
     return {cls.__name__: props["unit_key"] for cls, props in _GRIDTIME_REGISTRY.items()}
