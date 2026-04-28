@@ -172,3 +172,88 @@ def test_series_repr_contains_gridtime_repr():
     r = repr(s)
     assert "2025-01-15 12:00-13:00" in r
     assert "gridtime[hour]" in r
+
+
+# --- pd.NA odrzucone -------------------------------------------------------
+
+def test_from_sequence_rejects_pd_na():
+    with pytest.raises(ValueError, match="non-nullable"):
+        HourArray._from_sequence([make_hours()[0], pd.NA], dtype=HourDtype())
+
+
+# --- take z allow_fill=True i ujemnym indeksem ----------------------------
+
+def test_take_allow_fill_negative_raises():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    with pytest.raises(ValueError, match="non-nullable"):
+        arr.take([-1], allow_fill=True)
+
+def test_take_positive_indices():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    result = arr.take([1, 0])
+    assert len(result) == 2
+    assert result[0] == make_hours()[1]
+
+
+# --- copy -------------------------------------------------------------------
+
+def test_copy_returns_new_instance():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    arr_copy = arr.copy()
+    assert isinstance(arr_copy, HourArray)
+    assert arr_copy[0] == arr[0]
+    assert arr_copy._data is not arr._data
+
+
+# --- nbytes -----------------------------------------------------------------
+
+def test_nbytes_positive():
+    arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
+    assert arr.nbytes > 0
+
+
+# --- _from_sequence z pd.Timestamp ------------------------------------------
+
+def test_from_sequence_accepts_timestamp_for_hour():
+    ts = pd.Timestamp("2025-01-15 12:00")
+    arr = HourArray._from_sequence([ts], dtype=HourDtype())
+    # timestamp_role="start" → Hour(end=13:00)
+    assert arr[0] == Hour(datetime(2025, 1, 15, 13, 0))
+
+def test_from_sequence_accepts_timestamp_for_day():
+    ts = pd.Timestamp("2025-01-15")
+    arr = DayArray._from_sequence([ts], dtype=DayDtype())
+    assert arr[0] == Day(date(2025, 1, 15))
+
+def test_from_sequence_accepts_timestamp_for_quarter_hour():
+    ts = pd.Timestamp("2025-01-15 12:00")
+    arr = QuarterHourArray._from_sequence([ts], dtype=QuarterHourDtype())
+    assert arr[0] == QuarterHour(datetime(2025, 1, 15, 12, 0))
+
+
+# --- isna dla DayArray i QuarterHourArray -----------------------------------
+
+def test_isna_day_all_false():
+    arr = DayArray._from_sequence(make_days(), dtype=DayDtype())
+    assert list(arr.isna()) == [False, False]
+
+def test_isna_qh_all_false():
+    arr = QuarterHourArray._from_sequence(make_qhs(), dtype=QuarterHourDtype())
+    assert list(arr.isna()) == [False, False]
+
+
+# --- Series repr dla DayArray i QuarterHourArray ----------------------------
+
+def test_series_repr_day():
+    arr = DayArray._from_sequence(make_days(), dtype=DayDtype())
+    s = pd.Series(arr)
+    r = repr(s)
+    assert "2025-01-15" in r
+    assert "gridtime[day]" in r
+
+def test_series_repr_quarter_hour():
+    arr = QuarterHourArray._from_sequence(make_qhs(), dtype=QuarterHourDtype())
+    s = pd.Series(arr)
+    r = repr(s)
+    assert "2025-01-15 12:00-12:15" in r
+    assert "gridtime[quarter_hour]" in r
