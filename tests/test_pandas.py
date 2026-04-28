@@ -271,3 +271,88 @@ def test_setitem_rejects_none():
     arr = HourArray._from_sequence(make_hours(), dtype=HourDtype())
     with pytest.raises(ValueError, match="non-nullable"):
         arr[0] = None
+
+
+# ===========================================================================
+# Task 3: to_gridtime
+# ===========================================================================
+
+from gridtime.pandas import to_gridtime
+
+
+# --- Day --------------------------------------------------------------------
+
+def test_to_gridtime_day_from_string():
+    s = pd.Series(["2025-01-15", "2025-01-16"])
+    result = to_gridtime(s, "gridtime[day]")
+    assert str(result.dtype) == "gridtime[day]"
+    assert result.iloc[0] == Day(date(2025, 1, 15))
+    assert result.iloc[1] == Day(date(2025, 1, 16))
+
+def test_to_gridtime_day_from_timestamps():
+    s = pd.Series(pd.to_datetime(["2025-03-01", "2025-03-02"]))
+    result = to_gridtime(s, "gridtime[day]")
+    assert result.iloc[0] == Day(date(2025, 3, 1))
+
+def test_to_gridtime_day_dtype_instance():
+    s = pd.Series(["2025-06-01"])
+    result = to_gridtime(s, DayDtype())
+    assert isinstance(result.dtype, DayDtype)
+
+
+# --- Hour, timestamp_role="start" (domyślne) --------------------------------
+
+def test_to_gridtime_hour_start_role():
+    # ts=12:00 jako start → Hour(end=13:00), czyli godzina 12:00-13:00
+    s = pd.Series(["2025-01-15 12:00", "2025-01-15 13:00"])
+    result = to_gridtime(s, "gridtime[hour]")
+    assert str(result.dtype) == "gridtime[hour]"
+    assert result.iloc[0] == Hour(datetime(2025, 1, 15, 13, 0))
+    assert result.iloc[1] == Hour(datetime(2025, 1, 15, 14, 0))
+
+def test_to_gridtime_hour_explicit_start():
+    s = pd.Series(["2025-01-15 12:00"])
+    result = to_gridtime(s, "gridtime[hour]", timestamp_role="start")
+    assert result.iloc[0] == Hour(datetime(2025, 1, 15, 13, 0))
+
+
+# --- Hour, timestamp_role="end" ---------------------------------------------
+
+def test_to_gridtime_hour_end_role():
+    # ts=13:00 jako end → Hour(end=13:00), czyli godzina 12:00-13:00
+    s = pd.Series(["2025-01-15 13:00"])
+    result = to_gridtime(s, "gridtime[hour]", timestamp_role="end")
+    assert result.iloc[0] == Hour(datetime(2025, 1, 15, 13, 0))
+
+
+# --- QuarterHour ------------------------------------------------------------
+
+def test_to_gridtime_quarter_hour():
+    s = pd.Series(["2025-07-10 00:00", "2025-07-10 00:15"])
+    result = to_gridtime(s, "gridtime[quarter_hour]")
+    assert str(result.dtype) == "gridtime[quarter_hour]"
+    assert result.iloc[0] == QuarterHour(datetime(2025, 7, 10, 0, 0))
+    assert result.iloc[1] == QuarterHour(datetime(2025, 7, 10, 0, 15))
+
+
+# --- kwargs → pd.to_datetime ------------------------------------------------
+
+def test_to_gridtime_passes_kwargs_to_datetime():
+    s = pd.Series(["15/01/2025"])
+    result = to_gridtime(s, "gridtime[day]", dayfirst=True)
+    assert result.iloc[0] == Day(date(2025, 1, 15))
+
+
+# --- astype -----------------------------------------------------------------
+
+def test_astype_hour():
+    s = pd.Series(pd.to_datetime(["2025-06-01 08:00", "2025-06-01 09:00"]))
+    result = s.astype("gridtime[hour]")
+    assert str(result.dtype) == "gridtime[hour]"
+    assert result.iloc[0] == Hour(datetime(2025, 6, 1, 9, 0))
+
+def test_astype_day():
+    s = pd.Series(pd.to_datetime(["2025-06-01", "2025-06-02"]))
+    result = s.astype("gridtime[day]")
+    assert str(result.dtype) == "gridtime[day]"
+    assert result.iloc[0] == Day(date(2025, 6, 1))

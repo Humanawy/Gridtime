@@ -199,3 +199,186 @@ class QuarterHourArray(GridtimeArray):
     def _convert_timestamp(cls, ts: pd.Timestamp):
         dt = ts.to_pydatetime().replace(tzinfo=None)
         return QuarterHour(dt)
+
+
+# ===========================================================================
+# to_gridtime — konwersja pandas Series na Series z typem gridtime
+# ===========================================================================
+
+from gridtime._dst import is_missing_hour, is_missing_quarter
+from gridtime._dst import is_duplicated_hour, is_duplicated_quarter
+from datetime import datetime
+
+
+def _resolve_array_class(dtype) -> type:
+    """Zamienia dtype string/instancję/klasę na klasę GridtimeArray."""
+    if isinstance(dtype, str):
+        dtype = pd.api.types.pandas_dtype(dtype)
+    if isinstance(dtype, type) and issubclass(dtype, GridtimeArray):
+        return dtype
+    if isinstance(dtype, GridtimeDtype):
+        return dtype.construct_array_type()
+    raise TypeError(f"Nieobsługiwany dtype: {dtype!r}")
+
+
+def _ts_to_naive_dt(ts: pd.Timestamp) -> datetime:
+    """Zamienia pd.Timestamp na naive datetime (bez strefy czasowej)."""
+    return ts.to_pydatetime().replace(tzinfo=None)
+
+
+def _build_day_objects(timestamps) -> list:
+    return [Day(ts.date()) for ts in timestamps]
+
+
+def _build_hour_objects(timestamps, timestamp_role: str, dst_ambiguous) -> list:
+    """Buduje listę Hour-obiektów z obsługą DST."""
+    pairs = []
+    for ts in timestamps:
+        dt = _ts_to_naive_dt(ts)
+        if timestamp_role == "start":
+            start_time = dt
+            end_time = dt + timedelta(hours=1)
+        else:  # "end"
+            end_time = dt
+            start_time = dt - timedelta(hours=1)
+        pairs.append((start_time, end_time))
+
+    # Sprawdź brakujące godziny DST (marzec) → ValueError
+    missing = [start for start, end in pairs if is_missing_hour(start)]
+    if missing:
+        formatted = ", ".join(str(dt) for dt in missing)
+        raise ValueError(
+            f"Następujące timestamps nie istnieją z powodu zmiany czasu (DST):\n"
+            f"  {formatted}\n"
+            f"Usuń lub popraw te wartości przed konwersją."
+        )
+
+    # Buduj obiekty z obsługą DST
+    if dst_ambiguous in ("first", "second"):
+        is_backward = dst_ambiguous == "second"
+        return [
+            Hour(end, is_backward=is_backward) if is_duplicated_hour(start) else Hour(end)
+            for start, end in pairs
+        ]
+
+    # dst_ambiguous=None → auto-detect na podstawie kolejności
+    seen_dst: dict[datetime, int] = {}
+    objects = []
+    for start, end in pairs:
+        if is_duplicated_hour(start):
+            count = seen_dst.get(start, 0)
+            if count >= 2:
+                raise ValueError(
+                    f"Timestamp DST {start} pojawia się więcej niż 2 razy w serii."
+                )
+            objects.append(Hour(end, is_backward=(count == 1)))
+            seen_dst[start] = count + 1
+        else:
+            objects.append(Hour(end))
+
+    # Ostrzeż o pojedynczych wystąpieniach (niekompletne dane)
+    single = [str(st) for st, count in seen_dst.items() if count == 1]
+    if single:
+        warnings.warn(
+            f"Nie można wywnioskować kolejności dla timestampów DST\n"
+            f"({', '.join(single)}). Dane zawierają tylko jedno wystąpienie "
+            f"duplikowanej godziny.\n"
+            f"Wybrano domyślnie 'first'. Podaj dst_ambiguous='first' lub 'second'\n"
+            f"aby jawnie wskazać które to wystąpienie i wyciszyć to ostrzeżenie.",
+            GridtimeDSTWarning,
+            stacklevel=4,
+        )
+    return objects
+
+
+def _build_quarter_hour_objects(timestamps, timestamp_role: str, dst_ambiguous) -> list:
+    """Buduje listę QuarterHour-obiektów z obsługą DST."""
+    start_times = []
+    for ts in timestamps:
+        dt = _ts_to_naive_dt(ts)
+        if timestamp_role == "start":
+            start_times.append(dt)
+        else:  # "end"
+            start_times.append(dt - timedelta(minutes=15))
+
+    # Sprawdź brakujące kwadranse (marzec)
+    missing = [st for st in start_times if is_missing_quarter(st)]
+    if missing:
+        formatted = ", ".join(str(dt) for dt in missing)
+        raise ValueError(
+            f"Następujące timestamps nie istnieją z powodu zmiany czasu (DST):\n"
+            f"  {formatted}\n"
+            f"Usuń lub popraw te wartości przed konwersją."
+        )
+
+    if dst_ambiguous in ("first", "second"):
+        is_backward = dst_ambiguous == "second"
+        return [
+            QuarterHour(st, is_backward=is_backward) if is_duplicated_quarter(st) else QuarterHour(st)
+            for st in start_times
+        ]
+
+    # Auto-detect
+    seen_dst: dict[datetime, int] = {}
+    objects = []
+    for st in start_times:
+        if is_duplicated_quarter(st):
+            count = seen_dst.get(st, 0)
+            if count >= 2:
+                raise ValueError(
+                    f"Timestamp DST {st} pojawia się więcej niż 2 razy w serii."
+                )
+            objects.append(QuarterHour(st, is_backward=(count == 1)))
+            seen_dst[st] = count + 1
+        else:
+            objects.append(QuarterHour(st))
+
+    single = [str(st) for st, count in seen_dst.items() if count == 1]
+    if single:
+        warnings.warn(
+            f"Nie można wywnioskować kolejności dla timestampów DST\n"
+            f"({', '.join(single)}). Dane zawierają tylko jedno wystąpienie "
+            f"duplikowanego kwadransa.\n"
+            f"Wybrano domyślnie 'first'. Podaj dst_ambiguous='first' lub 'second'\n"
+            f"aby jawnie wskazać które to wystąpienie i wyciszyć to ostrzeżenie.",
+            GridtimeDSTWarning,
+            stacklevel=4,
+        )
+    return objects
+
+
+def to_gridtime(
+    series,
+    dtype,
+    *,
+    timestamp_role: str = "start",
+    dst_ambiguous=None,
+    **kwargs,
+) -> pd.Series:
+    """Konwertuje pandas Series na Series z kolumną gridtime.
+
+    Args:
+        series: Wejściowe dane (stringi, daty, pd.Timestamp, datetime64).
+        dtype:  Docelowy typ gridtime: "gridtime[hour]" | "gridtime[day]" |
+                "gridtime[quarter_hour]" | instancja dtype | klasa Array.
+        timestamp_role: "start" (domyślne) lub "end" — jak interpretować
+                        timestamp dla Hour i QuarterHour.
+        dst_ambiguous:  None (auto-detect wg kolejności) | "first" | "second".
+        **kwargs:       Przekazywane do pd.to_datetime().
+    """
+    array_class = _resolve_array_class(dtype)
+    timestamps = pd.to_datetime(series, **kwargs)
+
+    gt_type = array_class._gridtime_type
+
+    if gt_type is Day:
+        objects = _build_day_objects(timestamps)
+    elif gt_type is Hour:
+        objects = _build_hour_objects(timestamps, timestamp_role, dst_ambiguous)
+    elif gt_type is QuarterHour:
+        objects = _build_quarter_hour_objects(timestamps, timestamp_role, dst_ambiguous)
+    else:
+        raise TypeError(f"Nieobsługiwany typ gridtime: {gt_type}")
+
+    data = np.array(objects, dtype=object)
+    return pd.Series(array_class(data))
