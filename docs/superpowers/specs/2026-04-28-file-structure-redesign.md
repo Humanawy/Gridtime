@@ -104,7 +104,7 @@ Obecny `tests/test_gridtime.py` zostaje podzielony — żadne testy nie są usuw
 tests/
     __init__.py
     test_periods.py      # testy klas i step functions
-    test_parsing.py      # parse_date, _parse_hour_repr, parse_hour, create_hour_range
+    test_parsing.py      # parse_date, _parse_hour_repr, parse_hour
     test_factories.py    # create_* functions
     test_ranges.py       # create_date_range, create_hour_range
     test_validation.py   # validate_complete_range
