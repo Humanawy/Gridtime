@@ -36,6 +36,8 @@ class HourDtype(GridtimeDtype):
 
     @classmethod
     def construct_array_type(cls):
+        # HourArray jest zdefiniowane poniżej w tym samym pliku — forward reference.
+        # Ta metoda jest wywoływana dopiero w runtime, więc NameError nie wystąpi.
         return HourArray
 
 
@@ -46,6 +48,8 @@ class DayDtype(GridtimeDtype):
 
     @classmethod
     def construct_array_type(cls):
+        # DayArray jest zdefiniowane poniżej w tym samym pliku — forward reference.
+        # Ta metoda jest wywoływana dopiero w runtime, więc NameError nie wystąpi.
         return DayArray
 
 
@@ -56,4 +60,6 @@ class QuarterHourDtype(GridtimeDtype):
 
     @classmethod
     def construct_array_type(cls):
+        # QuarterHourArray jest zdefiniowane poniżej w tym samym pliku — forward reference.
+        # Ta metoda jest wywoływana dopiero w runtime, więc NameError nie wystąpi.
         return QuarterHourArray

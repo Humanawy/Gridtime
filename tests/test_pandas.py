@@ -41,3 +41,20 @@ def test_dtype_registered_quarter_hour():
 
 def test_dst_warning_is_user_warning():
     assert issubclass(GridtimeDSTWarning, UserWarning)
+
+def test_construct_from_string_wrong_name():
+    with pytest.raises(TypeError):
+        HourDtype.construct_from_string("gridtime[day]")
+
+def test_construct_from_string_non_string():
+    with pytest.raises(TypeError):
+        HourDtype.construct_from_string(123)
+
+def test_hour_dtype_repr():
+    assert repr(HourDtype()) == "gridtime[hour]"
+
+def test_day_dtype_repr():
+    assert repr(DayDtype()) == "gridtime[day]"
+
+def test_quarter_hour_dtype_repr():
+    assert repr(QuarterHourDtype()) == "gridtime[quarter_hour]"
