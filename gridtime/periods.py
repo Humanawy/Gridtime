@@ -1,5 +1,5 @@
 # gridtime/periods.py
-from datetime import datetime, timedelta, date, time
+from datetime import datetime, timedelta, date
 from typing import Union
 from gridtime._registry import register_unit
 from gridtime._dst import (
@@ -7,7 +7,7 @@ from gridtime._dst import (
     is_missing_hour, is_duplicated_hour,
 )
 from gridtime._base import GridtimeLeaf, GridtimeStructure
-from gridtime.parsing import parse_date, _parse_hour_repr, _is_hour_repr
+from gridtime.parsing import parse_date, _parse_hour_repr
 from gridtime._steps import (
     quarter_hour_step, hour_step, day_step, month_step,
     quarter_step, year_step, week_step, season_step, month_decade_step,
