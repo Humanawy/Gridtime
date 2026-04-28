@@ -106,7 +106,7 @@ def to_gridtime(
     dtype,                     # "gridtime[hour]" | HourDtype() | type HourArray
     *,
     timestamp_role="start",    # "start" | "end"  (dla Hour i QuarterHour)
-    dst_ambiguous=None,        # None | "first" | "second" | "infer"
+    dst_ambiguous=None,        # None | "first" | "second"
     **kwargs,                  # przekazywane do pd.to_datetime(series, **kwargs)
 ) -> pd.Series:
 ```
@@ -119,32 +119,27 @@ def to_gridtime(
    - Zbuduj obiekt gridtime zgodnie z `timestamp_role`
 3. Zwróć `pd.Series(GridtimeArray(...))`
 
-**Tryb `dst_ambiguous="infer"` — tryb podstawowy, zalecany:**
+**Tryb `dst_ambiguous=None` — domyślny, inteligentny:**
 
-Przeznaczony dla danych kompletnych, które zawierają oba wystąpienia duplikowanej godziny w naturalnej kolejności. Algorytm przegląda serię od lewej do prawej i śledzi każdy unikalny DST-timestamp:
+Algorytm przegląda serię od lewej do prawej i śledzi każdy unikalny DST-timestamp:
 - pierwsze napotkanie → `↑1st`
 - drugie napotkanie → `↓2nd`
 - trzecie i kolejne → `ValueError` (nieprawidłowe dane)
 
-Brak ostrzeżeń gdy dane są kompletne. Jeśli `"infer"` napotka DST-timestamp który wystąpił tylko raz (dane niekompletne — źródło nie uwzględniło obu wystąpień), rzuca `GridtimeDSTWarning` z sugestią użycia `"first"` lub `"second"`:
+Gdy dane są kompletne (oba wystąpienia obecne w kolejności) — brak ostrzeżeń.  
+Gdy timestamp DST pojawia się tylko raz (dane niekompletne), rzuca `GridtimeDSTWarning` z sugestią użycia `"first"` lub `"second"` i domyślnie wybiera `↑1st`:
 ```
 GridtimeDSTWarning: Nie można wywnioskować kolejności dla timestampów DST
 (2025-10-26 02:00). Dane zawierają tylko jedno wystąpienie duplikowanej godziny.
-Podaj dst_ambiguous='first' lub 'second' aby jawnie wskazać które to wystąpienie.
+Wybrano domyślnie 'first'. Podaj dst_ambiguous='first' lub 'second'
+aby jawnie wskazać które to wystąpienie i wyciszyć to ostrzeżenie.
 ```
 
 **Tryb `dst_ambiguous="first"` / `"second"` — jawne wskazanie dla niekompletnych danych:**
 
-Stosowany gdy dane źródłowe zawierają tylko jedno wystąpienie duplikowanej godziny i użytkownik wie które to jest. Przypisuje wszystkie DST-ambiguous timestamps jednolicie jako `↑1st` albo `↓2nd`. Brak ostrzeżeń.
-
-**Tryb `dst_ambiguous=None` — tryb domyślny, ostrzegawczy:**
-
-Gdy użytkownik nie podał żadnego trybu i dane trafiają na duplikowaną godzinę DST. Rzuca `GridtimeDSTWarning` i domyślnie wybiera `"first"`:
-```
-GridtimeDSTWarning: 2 timestamps trafia na duplikowaną godzinę DST
-(2025-10-26 02:00, 2025-10-26 02:15). Wybrano 'first'.
-Podaj dst_ambiguous='infer', 'first' lub 'second' aby wyciszyć to ostrzeżenie.
-```
+Stosowany gdy dane źródłowe zawierają tylko jedno wystąpienie duplikowanej godziny DST  
+i użytkownik wie które to jest. Przypisuje wszystkie DST-ambiguous timestamps jednolicie  
+jako `↑1st` albo `↓2nd`. Brak ostrzeżeń.
 
 ---
 
@@ -250,23 +245,50 @@ df["qh"] = to_gridtime(df["ts"], "gridtime[quarter_hour]")
 
 ---
 
-### Scenariusz 5 — Dane z jednym wystąpieniem duplikowanej godziny DST, brak `dst_ambiguous` → ostrzeżenie
+### Scenariusz 5 — Kompletne dane z oboma godzinami DST → domyślne `dst_ambiguous=None`
 
-26 października 2025 godzina 02:00–03:00 wystąpi dwa razy, ale dane źródłowe zawierają  
-tylko jedno wystąpienie `02:00` — system nie może wywnioskować które to jest.  
-`dst_ambiguous=None` (domyślne) rzuca ostrzeżenie i wybiera `↑1st`.
+26 października 2025 godzina 02:00–03:00 wystąpi dwa razy. Dane źródłowe zawierają  
+oba wystąpienia w naturalnej kolejności. Domyślny tryb wykrywa to automatycznie — brak ostrzeżeń.
 
 ```python
 df["ts"] = pd.to_datetime([
     "2025-10-26 01:00",
-    "2025-10-26 02:00",   # ← tylko jedno wystąpienie, niejednoznaczne
+    "2025-10-26 02:00",   # ← pierwsze wystąpienie → ↑1st
+    "2025-10-26 02:00",   # ← drugie wystąpienie  → ↓2nd
     "2025-10-26 03:00",
 ])
 
 df["hour"] = to_gridtime(df["ts"], "gridtime[hour]")
-# GridtimeDSTWarning: 1 timestamp trafia na duplikowaną godzinę DST
-# (2025-10-26 02:00). Wybrano 'first'.
-# Podaj dst_ambiguous='infer', 'first' lub 'second' aby wyciszyć to ostrzeżenie.
+# Brak ostrzeżeń.
+#
+# df["hour"]:
+# 0    2025-10-26 01:00-02:00
+# 1    2025-10-26 02:00-03:00 [↑1st]
+# 2    2025-10-26 02:00-03:00 [↓2nd]
+# 3    2025-10-26 03:00-04:00
+# dtype: gridtime[hour]
+```
+
+---
+
+### Scenariusz 6 — Niekompletne dane DST (jedno wystąpienie) → ostrzeżenie i sugestia
+
+Dane źródłowe zawierają tylko jedno wystąpienie `02:00` — system nie może automatycznie  
+wywnioskować które to jest, rzuca `GridtimeDSTWarning` i domyślnie wybiera `↑1st`.  
+Użytkownik powinien sprawdzić dane i jawnie podać `dst_ambiguous`.
+
+```python
+df["ts"] = pd.to_datetime([
+    "2025-10-26 01:00",
+    "2025-10-26 02:00",   # ← tylko jedno wystąpienie
+    "2025-10-26 03:00",
+])
+
+df["hour"] = to_gridtime(df["ts"], "gridtime[hour]")
+# GridtimeDSTWarning: Nie można wywnioskować kolejności dla timestampów DST
+# (2025-10-26 02:00). Dane zawierają tylko jedno wystąpienie duplikowanej godziny.
+# Wybrano domyślnie 'first'. Podaj dst_ambiguous='first' lub 'second'
+# aby jawnie wskazać które to wystąpienie i wyciszyć to ostrzeżenie.
 #
 # df["hour"]:
 # 0    2025-10-26 01:00-02:00
@@ -277,10 +299,10 @@ df["hour"] = to_gridtime(df["ts"], "gridtime[hour]")
 
 ---
 
-### Scenariusz 6 — Dane z jednym wystąpieniem godziny DST, użytkownik wskazuje które
+### Scenariusz 7 — Niekompletne dane DST, użytkownik wskazuje które wystąpienie
 
-Po sprawdzeniu danych źródłowych użytkownik wie, że brakuje pierwszego wystąpienia —  
-dane zawierają wyłącznie cofniętą (`↓2nd`) godzinę. Jawnie podaje `dst_ambiguous="second"`.
+Po sprawdzeniu danych źródłowych użytkownik wie, że zawierają wyłącznie cofniętą (`↓2nd`)  
+godzinę. Jawnie podaje `dst_ambiguous="second"` — brak ostrzeżeń.
 
 ```python
 df["hour"] = to_gridtime(
@@ -372,38 +394,11 @@ Próba `pd.concat` kolumn różnych typów gridtime (np. `gridtime[hour]` z `gri
 
 ---
 
-### Scenariusz 11 — Kompletne dane z oboma godzinami DST → `dst_ambiguous="infer"` (godziny)
-
-System eksportuje pełną dobę z uwzględnieniem obu wystąpień godziny 02:00–03:00.  
-Dane zawierają ją dwukrotnie w naturalnej kolejności — `"infer"` przypisuje je automatycznie.  
-To zalecany tryb gdy źródło danych jest kompletne.
-
-```python
-df["ts"] = pd.to_datetime([
-    "2025-10-26 01:00",
-    "2025-10-26 02:00",   # ← pierwsze wystąpienie → ↑1st
-    "2025-10-26 02:00",   # ← drugie wystąpienie  → ↓2nd
-    "2025-10-26 03:00",
-])
-
-df["hour"] = to_gridtime(df["ts"], "gridtime[hour]", dst_ambiguous="infer")
-# Brak ostrzeżeń.
-#
-# df["hour"]:
-# 0    2025-10-26 01:00-02:00
-# 1    2025-10-26 02:00-03:00 [↑1st]
-# 2    2025-10-26 02:00-03:00 [↓2nd]
-# 3    2025-10-26 03:00-04:00
-# dtype: gridtime[hour]
-```
-
----
-
-### Scenariusz 12 — Kompletne dane kwadransowe DST → `dst_ambiguous="infer"` (kwadranse)
+### Scenariusz 11 — Kompletne dane kwadransowe DST → domyślne `dst_ambiguous=None`
 
 Pełna doba z październikową zmianą czasu w rozdzielczości 15 min zawiera 8 kwadransów  
 z zakresu 02:00–03:00: cztery `↑1st` i cztery `↓2nd` w naturalnej kolejności.  
-`"infer"` śledzi każdy unikalny timestamp osobno — pierwsze pojawienie się to `↑1st`, drugie to `↓2nd`.
+Domyślny tryb śledzi każdy unikalny timestamp osobno — pierwsze pojawienie to `↑1st`, drugie to `↓2nd`.
 
 ```python
 df["ts"] = pd.to_datetime([
@@ -419,7 +414,7 @@ df["ts"] = pd.to_datetime([
     "2025-10-26 03:00",
 ])
 
-df["qh"] = to_gridtime(df["ts"], "gridtime[quarter_hour]", dst_ambiguous="infer")
+df["qh"] = to_gridtime(df["ts"], "gridtime[quarter_hour]")
 # Brak ostrzeżeń.
 #
 # df["qh"]:
@@ -434,34 +429,6 @@ df["qh"] = to_gridtime(df["ts"], "gridtime[quarter_hour]", dst_ambiguous="infer"
 # 8    2025-10-26 02:45-03:00 [↓2nd]
 # 9    2025-10-26 03:00-03:15
 # dtype: gridtime[quarter_hour]
-```
-
----
-
-### Scenariusz 13 — `"infer"` na niekompletnych danych DST → ostrzeżenie z sugestią
-
-Dane źródłowe nie zawierają obu wystąpień duplikowanej godziny — `"infer"` nie może  
-wywnioskować kolejności dla nieparzystych timestampów DST. Rzuca `GridtimeDSTWarning`  
-i sugeruje jawne użycie `"first"` lub `"second"`.
-
-```python
-df["ts"] = pd.to_datetime([
-    "2025-10-26 01:00",
-    "2025-10-26 02:00",   # ← tylko jedno wystąpienie — infer nie może rozstrzygnąć
-    "2025-10-26 03:00",
-])
-
-df["hour"] = to_gridtime(df["ts"], "gridtime[hour]", dst_ambiguous="infer")
-# GridtimeDSTWarning: Nie można wywnioskować kolejności dla timestampów DST
-# (2025-10-26 02:00). Dane zawierają tylko jedno wystąpienie duplikowanej godziny.
-# Podaj dst_ambiguous='first' lub 'second' aby jawnie wskazać które to wystąpienie.
-# Wybrano domyślnie 'first'.
-#
-# df["hour"]:
-# 0    2025-10-26 01:00-02:00
-# 1    2025-10-26 02:00-03:00 [↑1st]   ← domyślnie first, z ostrzeżeniem
-# 2    2025-10-26 03:00-04:00
-# dtype: gridtime[hour]
 ```
 
 ---
@@ -486,11 +453,10 @@ Plik: `tests/test_pandas.py`
 - `astype("gridtime[hour]")` działa po rejestracji dtype
 
 ### DST
-- Duplikowana godzina + `dst_ambiguous=None` → `GridtimeDSTWarning` + `↑1st`
-- Duplikowana godzina + `dst_ambiguous="first"` → brak ostrzeżenia, `↑1st`
-- Duplikowana godzina + `dst_ambiguous="second"` → brak ostrzeżenia, `↓2nd`
-- Dwie identyczne godziny DST w serii + `dst_ambiguous="infer"` → `↑1st` i `↓2nd` wg kolejności, brak ostrzeżenia
-- Osiem kwadransów DST (4×↑ + 4×↓) + `dst_ambiguous="infer"` → prawidłowe przypisanie wg kolejności
-- Jedno wystąpienie DST + `dst_ambiguous="infer"` → `GridtimeDSTWarning` z sugestią użycia `"first"` / `"second"`, domyślnie `↑1st`
+- Dwie identyczne godziny DST w serii (dane kompletne) + `dst_ambiguous=None` → `↑1st` i `↓2nd` wg kolejności, brak ostrzeżenia
+- Osiem kwadransów DST (4×↑ + 4×↓, dane kompletne) + `dst_ambiguous=None` → prawidłowe przypisanie wg kolejności, brak ostrzeżenia
+- Jedno wystąpienie DST (dane niekompletne) + `dst_ambiguous=None` → `GridtimeDSTWarning` z sugestią, domyślnie `↑1st`
+- Jedno wystąpienie DST + `dst_ambiguous="first"` → brak ostrzeżenia, `↑1st`
+- Jedno wystąpienie DST + `dst_ambiguous="second"` → brak ostrzeżenia, `↓2nd`
 - Brakująca godzina (marzec) → `ValueError` z listą timestamps
 - `**kwargs` z `pd.to_datetime` (np. `format=`, `utc=`) są przekazywane dalej
