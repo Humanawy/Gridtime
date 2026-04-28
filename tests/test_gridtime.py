@@ -8,7 +8,8 @@ import pytest
 from datetime import datetime, timedelta, date
 import gridtime as gt
 
-from gridtime.utils import is_duplicated_hour, is_duplicated_quarter, _parse_hour_repr
+from gridtime._dst import is_duplicated_hour, is_duplicated_quarter
+from gridtime.parsing import _parse_hour_repr
 
 def test_valid_quarter():
     dt = datetime(2025, 3, 30, 1, 0)
