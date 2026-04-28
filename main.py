@@ -1,5 +1,5 @@
 from datetime import date, datetime
-from gridtime import Day, Hour
+from gridtime import Day, Hour, Quarter, create_date_range
 
 # Dzień zmiany czasu z letniego na zimowy – 26 października 2025
 dst_day = Day(date(2025, 10, 26))
@@ -15,3 +15,5 @@ duplicated_hours = [h for h in dst_day if h.is_duplicated]
 # Sprawdź drzewo struktury
 print("\nStruktura drzewa:")
 dst_day.print_tree(unit_stop="hours")
+
+print(Quarter(2025, 1).count("quarters15")) 
