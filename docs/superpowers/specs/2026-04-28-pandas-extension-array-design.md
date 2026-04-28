@@ -106,7 +106,7 @@ def to_gridtime(
     dtype,                     # "gridtime[hour]" | HourDtype() | type HourArray
     *,
     timestamp_role="start",    # "start" | "end"  (dla Hour i QuarterHour)
-    dst_ambiguous=None,        # None | "first" | "second"
+    dst_ambiguous=None,        # None | "first" | "second" | "infer"
     **kwargs,                  # przekazywane do pd.to_datetime(series, **kwargs)
 ) -> pd.Series:
 ```
@@ -118,15 +118,26 @@ def to_gridtime(
      - `dst_ambiguous=None` → `warnings.warn(GridtimeDSTWarning)` + wybierz `"first"`
      - `dst_ambiguous="first"` → `is_backward=False`, brak ostrzeżenia
      - `dst_ambiguous="second"` → `is_backward=True`, brak ostrzeżenia
+     - `dst_ambiguous="infer"` → patrz niżej
    - Czy timestamp trafia na brakującą godzinę DST (marzec)? → `ValueError` z listą nieprawidłowych timestamps
    - Zbuduj obiekt gridtime zgodnie z `timestamp_role`
 3. Zwróć `pd.Series(GridtimeArray(...))`
 
-**Ostrzeżenie DST** (`GridtimeDSTWarning`) zawiera listę timestamps których dotyczyło:
+**Tryb `dst_ambiguous="infer"` — automatyczne wykrywanie na podstawie kolejności:**
+
+Gdy dane zawierają naturalną sekwencję z oboma wystąpieniami duplikowanej godziny (tj. ten sam timestamp pojawia się dwukrotnie pod rząd w miejscu zmiany czasu), `"infer"` przypisuje je automatycznie — pierwsze wystąpienie to `↑1st`, drugie to `↓2nd`. Dla kwadransów: pierwsza czwórka identycznych timestampów to `↑1st`, druga czwórka to `↓2nd`.
+
+Algorytm przegląda serię od lewej do prawej. Gdy napotka duplikowany timestamp DST:
+- jeśli poprzednie wystąpienie tego samego timestampa DST w sesji było `↑1st` → przypisz `↓2nd`
+- w przeciwnym razie → przypisz `↑1st`
+
+Brak ostrzeżeń w trybie `"infer"` — zakłada się że użytkownik świadomie przekazał kompletne dane.
+
+**Ostrzeżenie DST** (`GridtimeDSTWarning`, tylko dla `dst_ambiguous=None`) zawiera listę timestamps których dotyczyło:
 ```
 GridtimeDSTWarning: 2 timestamps trafia na duplikowaną godzinę DST
 (2025-10-26 02:00, 2025-10-26 02:15). Wybrano 'first'.
-Podaj dst_ambiguous='first' lub 'second' aby wyciszyć to ostrzeżenie.
+Podaj dst_ambiguous='first', 'second' lub 'infer' aby wyciszyć to ostrzeżenie.
 ```
 
 ---
@@ -353,6 +364,72 @@ Próba `pd.concat` kolumn różnych typów gridtime (np. `gridtime[hour]` z `gri
 
 ---
 
+### Scenariusz 11 — Dwie identyczne godziny DST w danych → `dst_ambiguous="infer"` (godziny)
+
+System eksportuje pełną dobę z uwzględnieniem obu wystąpień godziny 02:00–03:00.  
+Dane zawierają ją dwukrotnie — raz jako `↑1st`, raz jako `↓2nd` — w naturalnej kolejności.  
+`"infer"` wykrywa to automatycznie na podstawie pozycji w serii — bez ostrzeżeń.
+
+```python
+df["ts"] = pd.to_datetime([
+    "2025-10-26 01:00",
+    "2025-10-26 02:00",   # ← pierwsze wystąpienie → ↑1st
+    "2025-10-26 02:00",   # ← drugie wystąpienie  → ↓2nd
+    "2025-10-26 03:00",
+])
+
+df["hour"] = to_gridtime(df["ts"], "gridtime[hour]", dst_ambiguous="infer")
+# Brak ostrzeżeń.
+#
+# df["hour"]:
+# 0    2025-10-26 01:00-02:00
+# 1    2025-10-26 02:00-03:00 [↑1st]
+# 2    2025-10-26 02:00-03:00 [↓2nd]
+# 3    2025-10-26 03:00-04:00
+# dtype: gridtime[hour]
+```
+
+---
+
+### Scenariusz 12 — Dwie identyczne godziny DST w danych → `dst_ambiguous="infer"` (kwadranse)
+
+Dla danych kwadransowych pełna doba z październikową zmianą czasu zawiera 8 kwadransów  
+z zakresu 02:00–03:00: cztery `↑1st` i cztery `↓2nd` w naturalnej kolejności.  
+`"infer"` śledzi każdy unikalny timestamp osobno — pierwsze pojawienie się to `↑1st`, drugie to `↓2nd`.
+
+```python
+df["ts"] = pd.to_datetime([
+    "2025-10-26 01:45",
+    "2025-10-26 02:00",   # ← ↑1st (pierwsze wystąpienie 02:00)
+    "2025-10-26 02:15",   # ← ↑1st (pierwsze wystąpienie 02:15)
+    "2025-10-26 02:30",   # ← ↑1st (pierwsze wystąpienie 02:30)
+    "2025-10-26 02:45",   # ← ↑1st (pierwsze wystąpienie 02:45)
+    "2025-10-26 02:00",   # ← ↓2nd (drugie wystąpienie 02:00)
+    "2025-10-26 02:15",   # ← ↓2nd (drugie wystąpienie 02:15)
+    "2025-10-26 02:30",   # ← ↓2nd (drugie wystąpienie 02:30)
+    "2025-10-26 02:45",   # ← ↓2nd (drugie wystąpienie 02:45)
+    "2025-10-26 03:00",
+])
+
+df["qh"] = to_gridtime(df["ts"], "gridtime[quarter_hour]", dst_ambiguous="infer")
+# Brak ostrzeżeń.
+#
+# df["qh"]:
+# 0    2025-10-26 01:45-02:00
+# 1    2025-10-26 02:00-02:15 [↑1st]
+# 2    2025-10-26 02:15-02:30 [↑1st]
+# 3    2025-10-26 02:30-02:45 [↑1st]
+# 4    2025-10-26 02:45-03:00 [↑1st]
+# 5    2025-10-26 02:00-02:15 [↓2nd]
+# 6    2025-10-26 02:15-02:30 [↓2nd]
+# 7    2025-10-26 02:30-02:45 [↓2nd]
+# 8    2025-10-26 02:45-03:00 [↓2nd]
+# 9    2025-10-26 03:00-03:15
+# dtype: gridtime[quarter_hour]
+```
+
+---
+
 ## 10. Testowanie
 
 Plik: `tests/test_pandas.py`
@@ -376,5 +453,7 @@ Plik: `tests/test_pandas.py`
 - Duplikowana godzina + `dst_ambiguous=None` → `GridtimeDSTWarning` + `↑1st`
 - Duplikowana godzina + `dst_ambiguous="first"` → brak ostrzeżenia, `↑1st`
 - Duplikowana godzina + `dst_ambiguous="second"` → brak ostrzeżenia, `↓2nd`
+- Dwie identyczne godziny DST w serii + `dst_ambiguous="infer"` → `↑1st` i `↓2nd` wg kolejności, brak ostrzeżenia
+- Osiem kwadransów DST (4×↑ + 4×↓) + `dst_ambiguous="infer"` → prawidłowe przypisanie wg kolejności
 - Brakująca godzina (marzec) → `ValueError` z listą timestamps
 - `**kwargs` z `pd.to_datetime` (np. `format=`, `utc=`) są przekazywane dalej
