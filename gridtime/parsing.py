@@ -98,6 +98,40 @@ def parse_hour(
     interpret: Literal["as_start", "as_end"] = "as_start",
     backward: bool = False,
 ) -> "Hour":
+    """Parsuje godzinę do obiektu Hour.
+
+    Dwa tryby użycia (analogicznie do parse_date):
+
+    1) Repr string (jeden argument):
+         parse_hour("2026-01-01 21:00-22:00")
+         parse_hour("2026-01-01 02:00-03:00 [↓2nd]")
+
+    2) Numer godziny + data:
+         parse_hour(21, "2026-01-01")
+         parse_hour("21", date(2026, 1, 1))
+         parse_hour(1, "2026-01-01", convention="1-24", interpret="as_end")
+
+    Args:
+        hour:       Repr string YYYY-MM-DD HH:MM-HH:MM lub numer godziny (int/str).
+        date_:      Data dnia – wymagana gdy hour jest numerem; None dla trybu repr.
+        convention: "0-23" (domyślna) lub "1-24" (energetyczna PSE).
+        interpret:  "as_start" (domyślna) lub "as_end".
+        backward:   Dla duplikowanych godzin DST: False = ↑1st, True = ↓2nd.
+                    Ignorowany gdy hour jest repr stringiem z tagiem DST.
+
+    Tabela zakresów (tryb numer + data):
+        convention  interpret   wejście   zakres
+        0-23        as_start    0         00:00-01:00
+        0-23        as_start    1         01:00-02:00
+        0-23        as_start    23        23:00-00:00+1d
+        0-23        as_end      1         00:00-01:00
+        0-23        as_end      23        22:00-23:00
+        0-23        as_end      0         ValueError
+        1-24        as_end      1         00:00-01:00
+        1-24        as_end      24        23:00-00:00+1d
+        1-24        as_start    1         01:00-02:00
+        1-24        as_start    24        ValueError
+    """
     from gridtime.periods import Hour  # lazy import — unika cyklu periods↔parsing
     # --- tryb repr string ---
     if isinstance(hour, str) and _is_hour_repr(hour):
