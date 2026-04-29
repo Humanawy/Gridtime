@@ -356,3 +356,151 @@ def test_astype_day():
     result = s.astype("gridtime[day]")
     assert str(result.dtype) == "gridtime[day]"
     assert result.iloc[0] == Day(date(2025, 6, 1))
+
+
+# ===========================================================================
+# Task 4: DST — brakująca godzina marca (ValueError)
+# ===========================================================================
+
+def test_missing_hour_raises_value_error():
+    # 30 marca 2025 godzina 02:00 nie istnieje (zmiana na czas letni)
+    s = pd.Series(["2025-03-30 01:00", "2025-03-30 02:00", "2025-03-30 03:00"])
+    with pytest.raises(ValueError, match="nie istnieją z powodu zmiany czasu"):
+        to_gridtime(s, "gridtime[hour]")
+
+def test_missing_hour_error_lists_timestamp():
+    s = pd.Series(["2025-03-30 02:00"])
+    with pytest.raises(ValueError, match="2025-03-30"):
+        to_gridtime(s, "gridtime[hour]")
+
+def test_missing_quarter_raises_value_error():
+    # 30 marca 2025 kwadranse 02:00-02:15, 02:15-02:30 itd. nie istnieją
+    s = pd.Series(["2025-03-30 01:45", "2025-03-30 02:00"])
+    with pytest.raises(ValueError, match="nie istnieją z powodu zmiany czasu"):
+        to_gridtime(s, "gridtime[quarter_hour]")
+
+def test_valid_hours_around_spring_dst_ok():
+    # Godziny tuż przed i po luce DST są prawidłowe
+    s = pd.Series(["2025-03-30 01:00", "2025-03-30 03:00"])
+    result = to_gridtime(s, "gridtime[hour]")
+    assert len(result) == 2
+
+
+# ===========================================================================
+# Task 5: DST — duplikowana godzina (auto-detect i jawne first/second)
+# ===========================================================================
+
+DST_DAY = "2025-10-26"  # ostatnia niedziela października 2025
+
+
+def test_complete_dst_hours_no_warning():
+    # Dwa wystąpienia 02:00 → auto-detect, brak ostrzeżeń
+    s = pd.Series([
+        f"{DST_DAY} 01:00",
+        f"{DST_DAY} 02:00",   # ← pierwsze → ↑1st
+        f"{DST_DAY} 02:00",   # ← drugie  → ↓2nd
+        f"{DST_DAY} 03:00",
+    ])
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error", GridtimeDSTWarning)
+        result = to_gridtime(s, "gridtime[hour]")
+
+    assert str(result.dtype) == "gridtime[hour]"
+    h1st = result.iloc[1]
+    h2nd = result.iloc[2]
+    assert h1st.is_duplicated is True
+    assert h1st.is_backward is False    # ↑1st
+    assert h2nd.is_duplicated is True
+    assert h2nd.is_backward is True     # ↓2nd
+
+
+def test_incomplete_dst_hour_warns():
+    # Jedno wystąpienie 02:00 → GridtimeDSTWarning
+    s = pd.Series([f"{DST_DAY} 01:00", f"{DST_DAY} 02:00", f"{DST_DAY} 03:00"])
+    with pytest.warns(GridtimeDSTWarning, match="jedno wystąpienie"):
+        result = to_gridtime(s, "gridtime[hour]")
+    # Domyślnie wybiera ↑1st
+    assert result.iloc[1].is_backward is False
+
+
+def test_dst_explicit_first_no_warning():
+    s = pd.Series([f"{DST_DAY} 01:00", f"{DST_DAY} 02:00", f"{DST_DAY} 03:00"])
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error", GridtimeDSTWarning)
+        result = to_gridtime(s, "gridtime[hour]", dst_ambiguous="first")
+    assert result.iloc[1].is_backward is False   # ↑1st
+
+
+def test_dst_explicit_second_no_warning():
+    s = pd.Series([f"{DST_DAY} 01:00", f"{DST_DAY} 02:00", f"{DST_DAY} 03:00"])
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error", GridtimeDSTWarning)
+        result = to_gridtime(s, "gridtime[hour]", dst_ambiguous="second")
+    assert result.iloc[1].is_backward is True    # ↓2nd
+
+
+def test_complete_dst_quarter_hours_no_warning():
+    # 4×↑1st + 4×↓2nd → auto-detect, brak ostrzeżeń
+    s = pd.Series([
+        f"{DST_DAY} 01:45",
+        f"{DST_DAY} 02:00",   # ← pierwsze 02:00 → ↑1st
+        f"{DST_DAY} 02:15",   # ← pierwsze 02:15 → ↑1st
+        f"{DST_DAY} 02:30",   # ← pierwsze 02:30 → ↑1st
+        f"{DST_DAY} 02:45",   # ← pierwsze 02:45 → ↑1st
+        f"{DST_DAY} 02:00",   # ← drugie 02:00  → ↓2nd
+        f"{DST_DAY} 02:15",   # ← drugie 02:15  → ↓2nd
+        f"{DST_DAY} 02:30",   # ← drugie 02:30  → ↓2nd
+        f"{DST_DAY} 02:45",   # ← drugie 02:45  → ↓2nd
+        f"{DST_DAY} 03:00",
+    ])
+    import warnings as _warnings
+    with _warnings.catch_warnings():
+        _warnings.simplefilter("error", GridtimeDSTWarning)
+        result = to_gridtime(s, "gridtime[quarter_hour]")
+
+    assert str(result.dtype) == "gridtime[quarter_hour]"
+    assert result.iloc[1].is_backward is False   # ↑1st (02:00)
+    assert result.iloc[4].is_backward is False   # ↑1st (02:45)
+    assert result.iloc[5].is_backward is True    # ↓2nd (02:00)
+    assert result.iloc[8].is_backward is True    # ↓2nd (02:45)
+
+
+def test_incomplete_dst_quarter_warns():
+    s = pd.Series([f"{DST_DAY} 02:00"])
+    with pytest.warns(GridtimeDSTWarning):
+        result = to_gridtime(s, "gridtime[quarter_hour]")
+    assert result.iloc[0].is_backward is False
+
+
+def test_three_occurrences_dst_raises():
+    s = pd.Series([
+        f"{DST_DAY} 02:00",
+        f"{DST_DAY} 02:00",
+        f"{DST_DAY} 02:00",   # trzecie wystąpienie → błąd
+    ])
+    with pytest.raises(ValueError, match="więcej niż 2 razy"):
+        to_gridtime(s, "gridtime[hour]")
+
+
+# ===========================================================================
+# Task 6: Smoke test — pełny DataFrame workflow
+# ===========================================================================
+
+def test_full_dataframe_workflow():
+    """Symuluje wczytanie danych z CSV i konwersję na gridtime."""
+    df = pd.DataFrame({
+        "ts": ["2025-01-15 08:00", "2025-01-15 09:00", "2025-01-15 10:00"],
+        "value": [100.0, 110.0, 95.0],
+    })
+    df["hour"] = to_gridtime(df["ts"], "gridtime[hour]")
+    df["day"] = to_gridtime(df["ts"], "gridtime[day]")
+
+    assert str(df["hour"].dtype) == "gridtime[hour]"
+    assert str(df["day"].dtype) == "gridtime[day]"
+    assert df["hour"].iloc[0] == Hour(datetime(2025, 1, 15, 9, 0))
+    assert df["day"].iloc[0] == Day(date(2025, 1, 15))
+    assert "gridtime[hour]" in str(df.dtypes["hour"])
+    assert "gridtime[day]" in str(df.dtypes["day"])
