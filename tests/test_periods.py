@@ -179,3 +179,97 @@ def test_quarter_order_in_fall_back_day_walk():
     next_q = quarters[last_idx + 1]
     assert next_q.start_time.hour == 3 and next_q.start_time.minute == 0
     assert next_q.end_time.hour   == 3 and next_q.end_time.minute   == 15
+
+
+# ---------------------------------------------------------------------------
+# Leniwe budowanie drzewa (_children nie może być tworzone w __init__)
+# ---------------------------------------------------------------------------
+
+@pytest.mark.parametrize(
+    "factory",
+    [
+        lambda: gt.Hour(datetime(2025, 6, 1, 13, 0)),
+        lambda: gt.Day(date(2025, 6, 1)),
+        lambda: gt.Month(2025, 6),
+        lambda: gt.Quarter(2025, 2),
+        lambda: gt.Year(2025),
+        lambda: gt.Week(2025, 22),
+        lambda: gt.Season(2025, "S"),
+        lambda: gt.MonthDecade(2025, 6, 2),
+    ],
+    ids=["Hour", "Day", "Month", "Quarter", "Year", "Week", "Season", "MonthDecade"],
+)
+def test_children_are_not_built_eagerly(factory):
+    obj = factory()
+    assert obj._children is None, (
+        f"{obj.__class__.__name__} zbudował dzieci już w __init__ - drzewo nie jest leniwe."
+    )
+
+
+def test_year_construction_does_not_cascade():
+    year = gt.Year(2025)
+    assert year._children is None
+
+    quarters = list(year)  # dostęp do bezpośrednich dzieci - buduje tylko 1 poziom
+    assert len(quarters) == 4
+    for q in quarters:
+        assert q._children is None, (
+            "Quarter nie powinien mieć zbudowanych dzieci, dopóki nikt o nie nie zapytał."
+        )
+
+
+def test_children_are_cached_after_first_access():
+    month = gt.Month(2025, 6)
+    assert month._children is None
+
+    first_call = list(month)
+    assert month._children is not None
+    second_call = list(month)
+    assert first_call == second_call
+
+
+def test_day_hours_property_matches_lazy_children():
+    day = gt.Day(date(2025, 6, 1))
+    assert day._children is None
+
+    hours = day.hours
+    assert day._children is not None
+    assert hours == list(day)
+    assert all(isinstance(h, gt.Hour) for h in hours)
+
+
+def test_month_decade_bounds_without_building_children():
+    decade = gt.MonthDecade(2025, 7, 2)
+    assert decade._children is None
+    assert decade.start_date == date(2025, 7, 11)
+    assert decade.end_date == date(2025, 7, 20)
+    assert decade._children is None, (
+        "start_date/end_date nie powinny wymuszać budowy dzieci."
+    )
+
+    last_decade = gt.MonthDecade(2025, 7, 3)
+    assert last_decade.start_date == date(2025, 7, 21)
+    assert last_decade.end_date == date(2025, 7, 31)
+
+
+def test_preload_materializes_whole_subtree():
+    year = gt.Year(2025)
+    assert year._children is None
+
+    result = year.preload()
+    assert result is year  # preload() zwraca self, można łańcuchować
+
+    quarter = year._children[0]
+    month   = quarter._children[0]
+    day     = month._children[0]
+    hour    = day._children[0]
+
+    for node in (year, quarter, month, day, hour):
+        assert node._children is not None, (
+            f"{node.__class__.__name__} powinien mieć zbudowane dzieci po preload()."
+        )
+
+
+def test_preload_on_leaf_is_noop():
+    qh = gt.QuarterHour(datetime(2025, 6, 1, 12, 0))
+    assert qh.preload() is qh

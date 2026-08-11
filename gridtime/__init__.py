@@ -9,8 +9,6 @@ from gridtime.periods import (
     Year,
     Week,
     Season,
-)
-from gridtime.factories import (
     create_hours,
     create_days,
     create_months,

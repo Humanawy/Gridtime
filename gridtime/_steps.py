@@ -56,7 +56,6 @@ def quarter_hour_step(obj: "QuarterHour", steps: int) -> "QuarterHour":
 
     return current
 
-
 def hour_step(obj: "Hour", steps: int) -> "Hour":
     """
     Zwraca instancję Hour przesuniętą o `steps` okresów.
@@ -109,7 +108,6 @@ def hour_step(obj: "Hour", steps: int) -> "Hour":
 
     return current
 
-
 def day_step(obj: "Day", steps: int) -> "Day":
     """
     Zwraca instancję Day przesuniętą o `steps` dni.
@@ -122,7 +120,6 @@ def day_step(obj: "Day", steps: int) -> "Day":
         return obj
     new_date = obj.date + timedelta(days=steps)
     return Day(new_date)
-
 
 def month_step(obj: "Month", steps: int) -> "Month":
     """
@@ -145,7 +142,6 @@ def month_step(obj: "Month", steps: int) -> "Month":
 
     return Month(new_year, new_month)
 
-
 def quarter_step(obj: "Quarter", steps: int) -> "Quarter":
     """
     Przesuń Quarter o `steps` kwartałów (dodatnie ➜ przyszłość, ujemne ➜ przeszłość).
@@ -162,7 +158,6 @@ def quarter_step(obj: "Quarter", steps: int) -> "Quarter":
 
     return Quarter(new_year, new_quarter)
 
-
 def year_step(obj: "Year", steps: int) -> "Year":
     """
     Przesuń Year o `steps` lat.
@@ -171,7 +166,6 @@ def year_step(obj: "Year", steps: int) -> "Year":
     if steps == 0:
         return obj
     return Year(obj.year + steps)
-
 
 def week_step(obj: "Week", steps: int) -> "Week":
     """
@@ -187,7 +181,6 @@ def week_step(obj: "Week", steps: int) -> "Week":
 
     new_iso_year, new_iso_week, _ = target_monday.isocalendar()
     return Week(new_iso_year, new_iso_week)
-
 
 def season_step(obj: "Season", steps: int) -> "Season":
     """
@@ -206,7 +199,6 @@ def season_step(obj: "Season", steps: int) -> "Season":
     new_type = "S" if mod == 0 else "W"
 
     return Season(new_year, new_type)
-
 
 def month_decade_step(obj: "MonthDecade", steps: int) -> "MonthDecade":
     """

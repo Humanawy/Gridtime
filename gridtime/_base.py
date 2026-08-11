@@ -142,6 +142,20 @@ class GridtimeLeaf(ABC):
         """Drukuje drzewo zwrócone przez :meth:`tree` na standardowe wyjście."""
         print(self.tree(**kwargs))
 
+    def preload(self) -> "GridtimeLeaf":
+        """Rekurencyjnie materializuje całe poddrzewo już teraz (fail-fast).
+
+        Domyślnie drzewo buduje się leniwie przy pierwszym dostępie do dzieci
+        (patrz `GridtimeStructure`), więc błąd walidacji głęboko w poddrzewie
+        (np. nieprawidłowy stan DST) ujawni się dopiero przy pierwszym
+        przejściu drzewa (`count`/`get`/`walk`/iteracja). `preload()` wymusza
+        budowę całego poddrzewa od razu, żeby taki błąd wypłynął natychmiast.
+        Na liściach (brak dzieci) jest no-opem.
+        """
+        for child in self._iter_children():
+            child.preload()
+        return self
+
 class GridtimeStructure(GridtimeLeaf):
     """Węzeł wewnętrzny drzewa — jednostka złożona z dzieci.
 
