@@ -18,9 +18,10 @@ from gridtime.periods import (
     create_season_quarters,
     create_week_days,
     create_decade_days,
+    parse_hour,
 )
 from gridtime.ranges import create_date_range, create_hour_range
-from gridtime.parsing import parse_date, parse_hour, is_quarter_aligned
+from gridtime.parsing import parse_date, is_quarter_aligned
 from gridtime.validation import validate_complete_range
 from gridtime._registry import _GRIDTIME_REGISTRY, register_unit, _all_unit_keys, _is_reachable
 from gridtime._dst import (

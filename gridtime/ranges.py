@@ -1,8 +1,8 @@
 # gridtime/ranges.py
 from datetime import datetime, date, timedelta
 from typing import Union, List, Literal
-from gridtime.periods import Day, Hour, QuarterHour, create_hours
-from gridtime.parsing import parse_date, is_quarter_aligned, parse_hour
+from gridtime.periods import Day, Hour, QuarterHour, create_hours, parse_hour
+from gridtime.parsing import parse_date, is_quarter_aligned
 
 
 def create_hour_range(

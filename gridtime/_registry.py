@@ -1,5 +1,9 @@
 # gridtime/_registry.py
-from typing import Optional
+from typing import Callable, Optional, TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from gridtime._base import GridtimeLeaf
+    StepFn = Callable[["GridtimeLeaf", int], "GridtimeLeaf"]
 
 _GRIDTIME_REGISTRY = {}
 
@@ -17,7 +21,7 @@ def print_structure_tree(cls: type, indent: str = ""):
         for child_cls in child_classes:
             print_structure_tree(child_cls, indent + "  ")
 
-def register_unit(unit_key: str, children_key: Optional[str] = None, step: Optional[str] = None):
+def register_unit(unit_key: str, children_key: Optional[str] = None, step: Optional["StepFn"] = None):
     """Dekorator rejestrujący klasę jednostki czasu w `_GRIDTIME_REGISTRY`."""
     def decorator(cls):
         _GRIDTIME_REGISTRY[cls] = {
